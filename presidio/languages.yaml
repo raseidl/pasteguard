@@ -1,0 +1,223 @@
+# LLM-Shield Language Registry
+# All 24 spaCy languages with trained pipelines
+#
+# Usage: Set LANGUAGES build arg to select which to install
+#   LANGUAGES=en,de docker-compose build
+#
+# To add a custom language, add an entry here with model name
+
+spacy_version: "3.8.0"
+
+languages:
+  # Catalan
+  ca:
+    name: Catalan
+    model: ca_core_news_md
+
+  # Chinese
+  zh:
+    name: Chinese
+    model: zh_core_web_md
+
+  # Croatian
+  hr:
+    name: Croatian
+    model: hr_core_news_md
+
+  # Danish
+  da:
+    name: Danish
+    model: da_core_news_md
+
+  # Dutch
+  nl:
+    name: Dutch
+    model: nl_core_news_md
+    phone_context:
+      - telefoon
+      - telefoonnummer
+      - mobiel
+      - bellen
+      - fax
+
+  # English
+  en:
+    name: English
+    model: en_core_web_lg
+    phone_context:
+      - phone
+      - telephone
+      - cell
+      - mobile
+      - call
+      - fax
+
+  # Finnish
+  fi:
+    name: Finnish
+    model: fi_core_news_md
+
+  # French
+  fr:
+    name: French
+    model: fr_core_news_md
+    phone_context:
+      - téléphone
+      - portable
+      - mobile
+      - numéro
+      - appeler
+      - fax
+
+  # German
+  de:
+    name: German
+    model: de_core_news_md
+    phone_context:
+      - telefon
+      - telefonnummer
+      - handy
+      - mobil
+      - mobilnummer
+      - fax
+      - anrufen
+
+  # Greek
+  el:
+    name: Greek
+    model: el_core_news_md
+    phone_context:
+      - τηλέφωνο
+      - κινητό
+      - φαξ
+
+  # Italian
+  it:
+    name: Italian
+    model: it_core_news_md
+    phone_context:
+      - telefono
+      - cellulare
+      - mobile
+      - numero
+      - chiamare
+      - fax
+
+  # Japanese
+  ja:
+    name: Japanese
+    model: ja_core_news_md
+    phone_context:
+      - 電話
+      - 携帯
+      - モバイル
+      - ファックス
+
+  # Korean
+  ko:
+    name: Korean
+    model: ko_core_news_md
+    phone_context:
+      - 전화
+      - 휴대폰
+      - 모바일
+      - 팩스
+
+  # Lithuanian
+  lt:
+    name: Lithuanian
+    model: lt_core_news_md
+
+  # Macedonian
+  mk:
+    name: Macedonian
+    model: mk_core_news_md
+
+  # Norwegian Bokmål
+  nb:
+    name: Norwegian
+    model: nb_core_news_md
+    phone_context:
+      - telefon
+      - mobil
+      - ringe
+      - faks
+
+  # Polish
+  pl:
+    name: Polish
+    model: pl_core_news_md
+    phone_context:
+      - telefon
+      - komórka
+      - dzwonić
+      - faks
+
+  # Portuguese
+  pt:
+    name: Portuguese
+    model: pt_core_news_md
+    phone_context:
+      - telefone
+      - celular
+      - móvel
+      - ligar
+      - fax
+
+  # Romanian
+  ro:
+    name: Romanian
+    model: ro_core_news_md
+    phone_context:
+      - telefon
+      - mobil
+      - apel
+      - fax
+
+  # Russian
+  ru:
+    name: Russian
+    model: ru_core_news_md
+    phone_context:
+      - телефон
+      - мобильный
+      - звонить
+      - факс
+
+  # Slovenian
+  sl:
+    name: Slovenian
+    model: sl_core_news_md
+
+  # Spanish
+  es:
+    name: Spanish
+    model: es_core_news_md
+    phone_context:
+      - teléfono
+      - móvil
+      - celular
+      - número
+      - llamar
+      - fax
+
+  # Swedish
+  sv:
+    name: Swedish
+    model: sv_core_news_md
+    phone_context:
+      - telefon
+      - mobil
+      - ringa
+      - fax
+
+  # Ukrainian
+  uk:
+    name: Ukrainian
+    model: uk_core_news_md
+    phone_context:
+      - телефон
+      - мобільний
+      - дзвонити
+      - факс
+

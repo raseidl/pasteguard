@@ -1,0 +1,115 @@
+# LLM-Shield Configuration
+# Copy this file to config.yaml and adjust the values
+
+# Privacy mode: "mask" or "route"
+#
+# mask:  Masks PII before sending to upstream, unmasks in response (no local LLM needed)
+# route: Routes requests to local LLM when PII detected (requires local provider)
+mode: mask
+
+# Server settings
+server:
+  port: 3000
+  host: "0.0.0.0"
+
+# LLM Provider configuration
+providers:
+  # Upstream provider (required for both modes)
+  # The proxy forwards your client's Authorization header to the upstream provider
+  # You can optionally set api_key here as a fallback
+  upstream:
+    type: openai
+    base_url: https://api.openai.com/v1
+    # api_key: ${OPENAI_API_KEY}  # Optional fallback if client doesn't send auth header
+
+  # Local provider (only for route mode - can be removed if using mask mode)
+  # Supports: ollama, openai (for OpenAI-compatible servers like LocalAI, LM Studio)
+  local:
+    type: ollama  # or "openai" for OpenAI-compatible servers
+    base_url: http://localhost:11434
+    model: llama3.2  # All PII requests use this model
+    # api_key: ${LOCAL_API_KEY}  # Only needed for OpenAI-compatible servers
+
+# Routing rules (only for route mode - can be removed if using mask mode)
+routing:
+  # Default provider when no PII is detected
+  default: upstream
+
+  # Provider to use when PII is detected
+  on_pii_detected: local
+
+# Masking settings (only for mask mode - can be removed if using route mode)
+masking:
+  # Add visual markers to unmasked values in response (for debugging/demos)
+  # Interferes with copy/paste, so disabled by default
+  show_markers: false
+  marker_text: "[protected]"
+
+# PII Detection settings (Microsoft Presidio)
+pii_detection:
+  presidio_url: ${PRESIDIO_URL:-http://localhost:5002}
+
+  # Supported languages for PII detection
+  # Auto-detects language from input text and uses appropriate model
+  # If only one language is specified, language detection is skipped
+  #
+  # Languages must match what was installed during docker build:
+  #   LANGUAGES=en,de docker-compose build
+  #
+  # Available (24 languages): ca, zh, hr, da, nl, en, fi, fr, de, el,
+  #   it, ja, ko, lt, mk, nb, pl, pt, ro, ru, sl, es, sv, uk
+  # See presidio/languages.yaml for full list with details
+  languages:
+    - en
+    # Add more languages to match your Docker build:
+    # - de
+    # - fr
+    # - es
+    # - it
+
+  # Fallback language if detected language is not in the list above
+  fallback_language: en
+
+  score_threshold: 0.7  # Minimum confidence score (0.0 - 1.0)
+
+  # Entity types to detect
+  # See: https://microsoft.github.io/presidio/supported_entities/
+  entities:
+    - PERSON
+    - EMAIL_ADDRESS
+    - PHONE_NUMBER
+    - CREDIT_CARD
+    - IBAN_CODE
+    - IP_ADDRESS
+    - LOCATION
+    # - US_SSN
+    # - US_PASSPORT
+    # - CRYPTO
+    # - NRP  # National Registration Number
+    # - MEDICAL_LICENSE
+    # - URL
+
+# Logging settings
+logging:
+  # SQLite database for request logs
+  database: ./data/llm-shield.db
+
+  # Log retention in days (0 = keep forever)
+  retention_days: 30
+
+  # Log request/response content (may contain sensitive data!)
+  log_content: false
+
+  # Log masked content for dashboard preview (default: true)
+  # Shows what was actually sent to upstream LLM with PII replaced by tokens
+  # Disable if you don't want any content stored, even masked
+  log_masked_content: true
+
+# Dashboard settings
+dashboard:
+  enabled: true
+
+  # Basic auth for dashboard (optional)
+  # auth:
+  #   username: admin
+  #   password: ${DASHBOARD_PASSWORD}

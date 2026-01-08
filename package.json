@@ -1,0 +1,46 @@
+{
+  "name": "llm-shield",
+  "version": "0.1.0",
+  "description": "Intelligent privacy-aware routing for LLMs - OpenAI-compatible proxy that routes requests based on PII detection",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun --external lightningcss",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint src",
+    "format": "biome format src --write",
+    "check": "biome check src"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.7.6",
+    "eld": "^2.0.1",
+    "hono": "^4.11.0",
+    "hono-tailwind": "^2.2.0",
+    "tailwindcss": "^4.1.18",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  },
+  "keywords": [
+    "llm",
+    "privacy",
+    "pii",
+    "openai",
+    "proxy",
+    "gdpr",
+    "routing"
+  ],
+  "author": "Stefan Gasser",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sgasser/llm-shield"
+  }
+}
