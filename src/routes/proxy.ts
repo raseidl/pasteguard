@@ -4,7 +4,8 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { proxy } from "hono/proxy";
 import { z } from "zod";
-import type { MaskingConfig } from "../config";
+import { getConfig, type MaskingConfig } from "../config";
+import { detectSecrets, extractTextFromRequest } from "../secrets/detect";
 import { getRouter, type MaskDecision, type RoutingDecision } from "../services/decision";
 import type {
   ChatCompletionRequest,
@@ -71,7 +72,61 @@ proxyRoutes.post(
   async (c) => {
     const startTime = Date.now();
     const body = c.req.valid("json") as ChatCompletionRequest;
+    const config = getConfig();
     const router = getRouter();
+
+    // Secrets detection runs before PII detection
+    if (config.secrets_detection.enabled) {
+      const text = extractTextFromRequest(body);
+      const secretsResult = detectSecrets(text, config.secrets_detection);
+
+      if (secretsResult.detected) {
+        const secretTypes = secretsResult.matches.map((m) => m.type);
+        const secretTypesStr = secretTypes.join(", ");
+
+        // Set headers before returning error
+        c.header("X-LLM-Shield-Secrets-Detected", "true");
+        c.header("X-LLM-Shield-Secrets-Types", secretTypesStr);
+
+        // Block action (Phase 1) - return 422 error
+        if (config.secrets_detection.action === "block") {
+          // Log metadata only (no secret content)
+          logRequest(
+            {
+              timestamp: new Date().toISOString(),
+              mode: config.mode,
+              provider: "upstream", // Note: Request never reached provider
+              model: body.model || "unknown",
+              piiDetected: false,
+              entities: [],
+              latencyMs: Date.now() - startTime,
+              scanTimeMs: 0,
+              language: config.pii_detection.fallback_language,
+              languageFallback: false,
+              secretsDetected: true,
+              secretsTypes: secretTypes,
+            },
+            c.req.header("User-Agent") || null,
+          );
+
+          return c.json(
+            {
+              error: {
+                message: `Request blocked: detected secret material (${secretTypesStr}). Remove secrets and retry.`,
+                type: "invalid_request_error",
+                details: {
+                  secrets_detected: secretTypes,
+                },
+              },
+            },
+            422,
+          );
+        }
+
+        // TODO: Phase 2 - redact and route_local actions
+        // For now, if action is not "block", we continue (but this shouldn't happen in Phase 1)
+      }
+    }
 
     let decision: RoutingDecision;
     try {
@@ -111,13 +166,44 @@ async function handleCompletion(
   try {
     const result = await client.chatCompletion(request, authHeader);
 
-    setShieldHeaders(c, decision);
-
-    if (result.isStreaming) {
-      return handleStreamingResponse(c, result, decision, startTime, maskedContent, maskingConfig);
+    // Check for secrets in the request (for headers, even if not blocking)
+    const config = getConfig();
+    let secretsDetected = false;
+    let secretsTypes: string[] = [];
+    if (config.secrets_detection.enabled) {
+      const text = extractTextFromRequest(body);
+      const secretsResult = detectSecrets(text, config.secrets_detection);
+      if (secretsResult.detected) {
+        secretsDetected = true;
+        secretsTypes = secretsResult.matches.map((m) => m.type);
+      }
     }
 
-    return handleJsonResponse(c, result, decision, startTime, maskedContent, maskingConfig);
+    setShieldHeaders(c, decision, secretsDetected, secretsTypes);
+
+    if (result.isStreaming) {
+      return handleStreamingResponse(
+        c,
+        result,
+        decision,
+        startTime,
+        maskedContent,
+        maskingConfig,
+        secretsDetected,
+        secretsTypes,
+      );
+    }
+
+    return handleJsonResponse(
+      c,
+      result,
+      decision,
+      startTime,
+      maskedContent,
+      maskingConfig,
+      secretsDetected,
+      secretsTypes,
+    );
   } catch (error) {
     console.error("LLM request error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -128,7 +214,12 @@ async function handleCompletion(
 /**
  * Set X-LLM-Shield response headers
  */
-function setShieldHeaders(c: Context, decision: RoutingDecision) {
+function setShieldHeaders(
+  c: Context,
+  decision: RoutingDecision,
+  secretsDetected?: boolean,
+  secretsTypes?: string[],
+) {
   c.header("X-LLM-Shield-Mode", decision.mode);
   c.header("X-LLM-Shield-Provider", decision.provider);
   c.header("X-LLM-Shield-PII-Detected", decision.piiResult.hasPII.toString());
@@ -138,6 +229,10 @@ function setShieldHeaders(c: Context, decision: RoutingDecision) {
   }
   if (decision.mode === "mask") {
     c.header("X-LLM-Shield-PII-Masked", decision.piiResult.hasPII.toString());
+  }
+  if (secretsDetected && secretsTypes) {
+    c.header("X-LLM-Shield-Secrets-Detected", "true");
+    c.header("X-LLM-Shield-Secrets-Types", secretsTypes.join(","));
   }
 }
 
@@ -151,9 +246,19 @@ function handleStreamingResponse(
   startTime: number,
   maskedContent: string | undefined,
   maskingConfig: MaskingConfig,
+  secretsDetected?: boolean,
+  secretsTypes?: string[],
 ) {
   logRequest(
-    createLogData(decision, result, startTime, undefined, maskedContent),
+    createLogData(
+      decision,
+      result,
+      startTime,
+      undefined,
+      maskedContent,
+      secretsDetected,
+      secretsTypes,
+    ),
     c.req.header("User-Agent") || null,
   );
 
@@ -183,9 +288,19 @@ function handleJsonResponse(
   startTime: number,
   maskedContent: string | undefined,
   maskingConfig: MaskingConfig,
+  secretsDetected?: boolean,
+  secretsTypes?: string[],
 ) {
   logRequest(
-    createLogData(decision, result, startTime, result.response, maskedContent),
+    createLogData(
+      decision,
+      result,
+      startTime,
+      result.response,
+      maskedContent,
+      secretsDetected,
+      secretsTypes,
+    ),
     c.req.header("User-Agent") || null,
   );
 
@@ -205,6 +320,8 @@ function createLogData(
   startTime: number,
   response?: ChatCompletionResponse,
   maskedContent?: string,
+  secretsDetected?: boolean,
+  secretsTypes?: string[],
 ): RequestLogData {
   return {
     timestamp: new Date().toISOString(),
@@ -221,6 +338,8 @@ function createLogData(
     languageFallback: decision.piiResult.languageFallback,
     detectedLanguage: decision.piiResult.detectedLanguage,
     maskedContent,
+    secretsDetected,
+    secretsTypes,
   };
 }
 

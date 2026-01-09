@@ -19,6 +19,8 @@ export interface RequestLog {
   language_fallback: boolean;
   detected_language: string | null;
   masked_content: string | null;
+  secrets_detected: number | null;
+  secrets_types: string | null;
 }
 
 /**
@@ -76,6 +78,8 @@ export class Logger {
         language_fallback INTEGER NOT NULL DEFAULT 0,
         detected_language TEXT,
         masked_content TEXT,
+        secrets_detected INTEGER,
+        secrets_types TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -95,9 +99,9 @@ export class Logger {
   log(entry: Omit<RequestLog, "id">): void {
     const stmt = this.db.prepare(`
       INSERT INTO request_logs
-        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, prompt_tokens, completion_tokens, user_agent, language, language_fallback, detected_language, masked_content)
+        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, prompt_tokens, completion_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -116,6 +120,8 @@ export class Logger {
       entry.language_fallback ? 1 : 0,
       entry.detected_language,
       entry.masked_content,
+      entry.secrets_detected ?? null,
+      entry.secrets_types ?? null,
     );
   }
 
@@ -271,11 +277,18 @@ export interface RequestLogData {
   languageFallback: boolean;
   detectedLanguage?: string;
   maskedContent?: string;
+  secretsDetected?: boolean;
+  secretsTypes?: string[];
 }
 
 export function logRequest(data: RequestLogData, userAgent: string | null): void {
   try {
     const logger = getLogger();
+
+    // Safety: Never log content if secrets were detected
+    // Even if log_content is true, secrets are never logged
+    const shouldLogContent = data.maskedContent && !data.secretsDetected;
+
     logger.log({
       timestamp: data.timestamp,
       mode: data.mode,
@@ -291,7 +304,9 @@ export function logRequest(data: RequestLogData, userAgent: string | null): void
       language: data.language,
       language_fallback: data.languageFallback,
       detected_language: data.detectedLanguage ?? null,
-      masked_content: data.maskedContent ?? null,
+      masked_content: shouldLogContent ? (data.maskedContent ?? null) : null,
+      secrets_detected: data.secretsDetected !== undefined ? (data.secretsDetected ? 1 : 0) : null,
+      secrets_types: data.secretsTypes?.join(",") ?? null,
     });
   } catch (error) {
     console.error("Failed to log request:", error);

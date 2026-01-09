@@ -29,10 +29,7 @@ export interface SecretsDetectionResult {
 export function extractTextFromRequest(body: ChatCompletionRequest): string {
   return body.messages
     .map((message) => message.content)
-    .filter(
-      (content): content is string =>
-        typeof content === "string" && content.length > 0
-    )
+    .filter((content): content is string => typeof content === "string" && content.length > 0)
     .join("\n");
 }
 
@@ -47,15 +44,14 @@ export function extractTextFromRequest(body: ChatCompletionRequest): string {
  */
 export function detectSecrets(
   text: string,
-  config: SecretsDetectionConfig
+  config: SecretsDetectionConfig,
 ): SecretsDetectionResult {
   if (!config.enabled) {
     return { detected: false, matches: [] };
   }
 
   // Apply max_scan_chars limit
-  const textToScan =
-    config.max_scan_chars > 0 ? text.slice(0, config.max_scan_chars) : text;
+  const textToScan = config.max_scan_chars > 0 ? text.slice(0, config.max_scan_chars) : text;
 
   const matches: SecretsMatch[] = [];
   const redactions: SecretsRedaction[] = [];
@@ -90,8 +86,7 @@ export function detectSecrets(
     const matchedPositions = new Set<number>();
 
     // RSA PRIVATE KEY
-    const rsaPattern =
-      /-----BEGIN RSA PRIVATE KEY-----[\s\S]*?-----END RSA PRIVATE KEY-----/g;
+    const rsaPattern = /-----BEGIN RSA PRIVATE KEY-----[\s\S]*?-----END RSA PRIVATE KEY-----/g;
     let rsaCount = 0;
     for (const match of textToScan.matchAll(rsaPattern)) {
       rsaCount++;
@@ -106,8 +101,7 @@ export function detectSecrets(
     }
 
     // PRIVATE KEY (generic) - exclude RSA matches
-    const privateKeyPattern =
-      /-----BEGIN PRIVATE KEY-----[\s\S]*?-----END PRIVATE KEY-----/g;
+    const privateKeyPattern = /-----BEGIN PRIVATE KEY-----[\s\S]*?-----END PRIVATE KEY-----/g;
     let privateKeyCount = 0;
     for (const match of textToScan.matchAll(privateKeyPattern)) {
       if (match.index !== undefined && !matchedPositions.has(match.index)) {
