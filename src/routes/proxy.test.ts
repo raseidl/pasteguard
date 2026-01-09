@@ -74,16 +74,16 @@ NhAAAAAwEAAQAAAIEAyK8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v
       headers: { "Content-Type": "application/json" },
     });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     const body = (await res.json()) as {
-      error: { message: string; type: string; details: { secrets_detected: string[] } };
+      error: { message: string; type: string; code: string };
     };
     expect(body.error.type).toBe("invalid_request_error");
     expect(body.error.message).toContain("Request blocked");
     expect(body.error.message).toContain("secret material");
-    expect(body.error.details.secrets_detected).toContain("OPENSSH_PRIVATE_KEY");
+    expect(body.error.code).toBe("secrets_detected");
 
-    // Check headers
+    // Check headers - secret types are exposed via headers
     expect(res.headers.get("X-PasteGuard-Secrets-Detected")).toBe("true");
     expect(res.headers.get("X-PasteGuard-Secrets-Types")).toContain("OPENSSH_PRIVATE_KEY");
   });
@@ -109,12 +109,14 @@ MIIEpAIBAAKCAQEAyK8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v
       headers: { "Content-Type": "application/json" },
     });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     const body = (await res.json()) as {
-      error: { details: { secrets_detected: string[] } };
+      error: { code: string };
     };
-    expect(body.error.details.secrets_detected).toContain("PEM_PRIVATE_KEY");
+    expect(body.error.code).toBe("secrets_detected");
+    // Secret types are in headers
     expect(res.headers.get("X-PasteGuard-Secrets-Detected")).toBe("true");
+    expect(res.headers.get("X-PasteGuard-Secrets-Types")).toContain("PEM_PRIVATE_KEY");
   });
 
   test("allows request without secrets", async () => {
@@ -132,8 +134,12 @@ MIIEpAIBAAKCAQEAyK8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v
       headers: { "Content-Type": "application/json" },
     });
 
-    // Should not be blocked (may fail for other reasons like missing auth, but not 422)
-    expect(res.status).not.toBe(422);
+    // Should not be blocked for secrets (may fail for other reasons like missing auth)
+    // If it's 400, check it's not a secrets_detected error
+    if (res.status === 400) {
+      const body = (await res.json()) as { error?: { code?: string } };
+      expect(body.error?.code).not.toBe("secrets_detected");
+    }
     // Should not have secrets detection headers
     expect(res.headers.get("X-PasteGuard-Secrets-Detected")).toBeNull();
   });

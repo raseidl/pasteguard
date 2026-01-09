@@ -67,7 +67,8 @@ proxyRoutes.post(
           error: {
             message: "Invalid request body",
             type: "invalid_request_error",
-            details: result.error.errors,
+            param: null,
+            code: null,
           },
         },
         400,
@@ -124,12 +125,11 @@ proxyRoutes.post(
               error: {
                 message: `Request blocked: detected secret material (${secretTypesStr}). Remove secrets and retry.`,
                 type: "invalid_request_error",
-                details: {
-                  secrets_detected: secretTypes,
-                },
+                param: null,
+                code: "secrets_detected",
               },
             },
-            422,
+            400,
           );
         }
 
