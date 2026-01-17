@@ -43,19 +43,19 @@ pii_detection:
   # Supported languages for PII detection
   # Auto-detects language from input text and uses appropriate model
   #
-  # Languages must match what was installed during docker build:
-  #   LANGUAGES=en,de docker-compose build
+  # Docker: Uses PASTEGUARD_LANGUAGES env var (auto-configured per image)
+  # Local:  Uncomment the array below and comment out the env var line
   #
   # Available (24 languages): ca, zh, hr, da, nl, en, fi, fr, de, el,
   #   it, ja, ko, lt, mk, nb, pl, pt, ro, ru, sl, es, sv, uk
-  # See presidio/languages.yaml for full list with details
-  languages:
-    - en
-    # Add more languages to match your Docker build:
-    # - de
-    # - fr
-    # - es
-    # - it
+  # See docker/presidio/languages.yaml for full list with details
+  languages: ${PASTEGUARD_LANGUAGES:-en}
+  # languages:
+  #   - en
+  #   - de
+  #   - fr
+  #   - es
+  #   - it
 
   # Fallback language if detected language is not in the list above
   fallback_language: en
@@ -106,9 +106,9 @@ secrets_detection:
   #   - BEARER_TOKEN:        Bearer tokens in Authorization-style contexts
   #
   # Environment Variables (opt-in):
-  #   - ENV_PASSWORD:        Password variables (DB_PASSWORD=..., ADMIN_PWD=...)
-  #   - ENV_SECRET:          Secret variables (APP_SECRET=..., JWT_SECRET=...)
-  #   - CONNECTION_STRING:   Database URLs with credentials (postgres://user:pass@host/db)
+  #   - ENV_PASSWORD:        DB_PASSWORD=..., ADMIN_PWD=... (8+ char values)
+  #   - ENV_SECRET:          APP_SECRET=..., JWT_SECRET=... (8+ char values)
+  #   - CONNECTION_STRING:   postgres://user:pass@host, mongodb://...
   entities:
     - OPENSSH_PRIVATE_KEY
     - PEM_PRIVATE_KEY
@@ -118,7 +118,6 @@ secrets_detection:
     # - API_KEY_GITHUB
     # - JWT_TOKEN
     # - BEARER_TOKEN
-    # Uncomment to detect environment variable credentials:
     # - ENV_PASSWORD
     # - ENV_SECRET
     # - CONNECTION_STRING
