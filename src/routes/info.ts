@@ -13,7 +13,7 @@ infoRoutes.get("/info", (c) => {
   const detector = getPIIDetector();
   const languageValidation = detector.getLanguageValidation();
 
-  const providers = {
+  const providers: Record<string, unknown> = {
     openai: {
       base_url: getOpenAIInfo(config.providers.openai).baseUrl,
     },
@@ -21,6 +21,12 @@ infoRoutes.get("/info", (c) => {
       base_url: getAnthropicInfo(config.providers.anthropic).baseUrl,
     },
   };
+
+  if (config.providers.copilot) {
+    providers.copilot = {
+      base_url: config.providers.copilot.base_url,
+    };
+  }
 
   const info: Record<string, unknown> = {
     name: "PasteGuard",

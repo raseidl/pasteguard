@@ -27,6 +27,19 @@ providers:
     base_url: https://api.anthropic.com
     # api_key: ${ANTHROPIC_API_KEY}  # Optional fallback if client doesn't send auth header
 
+  # GitHub Copilot endpoint (optional)
+  # Masks PII/secrets in Copilot Chat and inline completions before they reach GitHub.
+  # Authentication is handled by the IDE — no api_key needed.
+  #
+  # VS Code setup (settings.json):
+  #   "github.copilot.advanced": { "debug.overrideCapiUrl": "http://localhost:3000/copilot" }
+  #
+  # IntelliJ setup:
+  #   Settings → Appearance & Behavior → System Settings → HTTP Proxy
+  #   Set proxy host to localhost and port to 3000
+  # copilot:
+  #   base_url: https://api.githubcopilot.com
+
 # Local provider - only used when mode: route
 # Supports: ollama (native), openai (for vLLM, LocalAI, LM Studio, etc.)
 local:

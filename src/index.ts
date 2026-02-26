@@ -7,6 +7,7 @@ import { getConfig } from "./config";
 import { getPIIDetector } from "./pii/detect";
 import { anthropicRoutes } from "./routes/anthropic";
 import { apiRoutes } from "./routes/api";
+import { copilotRoutes } from "./routes/copilot";
 import { dashboardRoutes } from "./routes/dashboard";
 import { healthRoutes } from "./routes/health";
 import { infoRoutes } from "./routes/info";
@@ -46,6 +47,7 @@ app.route("/", healthRoutes);
 app.route("/", infoRoutes);
 app.route("/openai", openaiRoutes);
 app.route("/anthropic", anthropicRoutes);
+app.route("/copilot", copilotRoutes);
 app.route("/api", apiRoutes);
 
 if (config.dashboard.enabled) {
@@ -176,6 +178,7 @@ Provider:
 Server:     http://${host}:${port}
 OpenAI API: http://${host}:${port}/openai/v1/chat/completions
 Anthropic:  http://${host}:${port}/anthropic/v1/messages
+Copilot:    http://${host}:${port}/copilot (chat/completions + v1/engines/:engine/completions)
 Mask API:   http://${host}:${port}/api/mask
 Health:     http://${host}:${port}/health
 Info:       http://${host}:${port}/info

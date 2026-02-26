@@ -6,10 +6,13 @@
   </picture>
 </p>
 
+> **This is a fork of [sgasser/pasteguard](https://github.com/sgasser/pasteguard).**
+> See the [upstream repository](https://github.com/sgasser/pasteguard) for the original project.
+
 <p align="center">
-  <a href="https://github.com/sgasser/pasteguard/actions/workflows/ci.yml"><img src="https://github.com/sgasser/pasteguard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/raseidl/pasteguard/actions/workflows/ci.yml"><img src="https://github.com/raseidl/pasteguard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://github.com/sgasser/pasteguard/releases"><img src="https://img.shields.io/github/v/release/sgasser/pasteguard" alt="Release"></a>
+  <a href="https://github.com/sgasser/pasteguard/releases"><img src="https://img.shields.io/github/v/release/sgasser/pasteguard" alt="Upstream Release"></a>
 </p>
 
 <p align="center">
@@ -61,6 +64,7 @@ Point your tools or app to PasteGuard instead of the provider:
 |----------|----------------|--------------|
 | OpenAI | `http://localhost:3000/openai/v1` | `https://api.openai.com/v1` |
 | Anthropic | `http://localhost:3000/anthropic` | `https://api.anthropic.com` |
+| Copilot | `http://localhost:3000/copilot` | `https://api.githubcopilot.com` |
 
 ```python
 # One line to protect your data
@@ -115,6 +119,43 @@ ANTHROPIC_BASE_URL=http://localhost:3000/anthropic claude
 
 **[Coding Tools docs →](https://pasteguard.com/docs/use-cases/coding-tools)**
 
+## GitHub Copilot
+
+PasteGuard intercepts GitHub Copilot requests from IDE plugins and applies the same masking pipeline as the OpenAI and Anthropic routes. Both endpoints are protected:
+
+- **Copilot Chat** — conversation-style requests (`/chat/completions`), same format as OpenAI Chat
+- **Inline completions** — ghost-text suggestions (`/v1/engines/:engine/completions`), using the legacy `prompt`/`suffix` format
+
+**What gets masked:** hardcoded API keys, private keys, and connection strings in your code; PII (emails, names, phone numbers, etc.) in comments and string literals — before any of it leaves your machine.
+
+> **Note:** Inline completions (ghost text) run in mask mode only. Route mode is not supported for inline completions because local providers speak chat format, not the legacy completions format.
+
+**1. Enable Copilot in `config.yaml`:**
+
+```yaml
+providers:
+  copilot:
+    base_url: https://api.githubcopilot.com
+```
+
+**2. Point your IDE at PasteGuard:**
+
+**VS Code** — add to `settings.json` (this is an advanced/debug setting):
+
+```json
+{
+  "github.copilot.advanced": {
+    "debug.overrideCapiUrl": "http://localhost:3000/copilot"
+  }
+}
+```
+
+**IntelliJ / JetBrains IDEs:**
+
+Settings → Appearance & Behavior → System Settings → HTTP Proxy → set host `localhost`, port `3000`.
+
+Authentication (GitHub OAuth tokens) is handled entirely by the IDE — no API key configuration required in PasteGuard.
+
 ## Dashboard
 
 Every request is logged with masking details. See what was detected, what was masked, and what reached the provider.
@@ -135,10 +176,27 @@ Both detected and masked in real time, including streaming responses.
 
 [Bun](https://bun.sh) · [Hono](https://hono.dev) · [Microsoft Presidio](https://microsoft.github.io/presidio/) · SQLite
 
+## Fork Information
+
+This is a fork of [sgasser/pasteguard](https://github.com/sgasser/pasteguard), maintained by [raseidl](https://github.com/raseidl).
+
+### Differences from Upstream
+
+- **GitHub Copilot support** — new `/copilot` route that intercepts VS Code / IntelliJ Copilot requests (Chat and inline completions) and applies the same PII/secrets masking as the OpenAI and Anthropic routes.
+
+### Syncing with Upstream
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute.
+For contributions to the core project, please submit PRs to the [upstream repository](https://github.com/sgasser/pasteguard). See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+For fork-specific changes, open PRs against this repository.
 
 ## License
 
-[Apache 2.0](LICENSE)
+[Apache 2.0](LICENSE) — Original work by [Stefan Gasser](https://github.com/sgasser).

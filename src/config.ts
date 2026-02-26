@@ -25,6 +25,12 @@ const AnthropicProviderSchema = z.object({
   api_key: z.string().optional(), // Optional fallback if client doesn't send auth header
 });
 
+// GitHub Copilot provider
+// Authentication is handled by the IDE (short-lived bearer tokens) — no api_key needed
+const CopilotProviderSchema = z.object({
+  base_url: z.string().url().default("https://api.githubcopilot.com"),
+});
+
 const DEFAULT_WHITELIST = ["You are Claude Code, Anthropic's official CLI for Claude."];
 
 const MaskingSchema = z.object({
@@ -122,6 +128,7 @@ const ConfigSchema = z
     providers: z.object({
       openai: OpenAIProviderSchema.default({}),
       anthropic: AnthropicProviderSchema.default({}),
+      copilot: CopilotProviderSchema.optional(),
     }),
     // Local provider - only for route mode
     local: LocalProviderSchema.optional(),
@@ -160,6 +167,7 @@ const ConfigSchema = z
 export type Config = z.infer<typeof ConfigSchema>;
 export type OpenAIProviderConfig = z.infer<typeof OpenAIProviderSchema>;
 export type AnthropicProviderConfig = z.infer<typeof AnthropicProviderSchema>;
+export type CopilotProviderConfig = z.infer<typeof CopilotProviderSchema>;
 export type LocalProviderConfig = z.infer<typeof LocalProviderSchema>;
 export type MaskingConfig = z.infer<typeof MaskingSchema>;
 export type SecretsDetectionConfig = z.infer<typeof SecretsDetectionSchema>;

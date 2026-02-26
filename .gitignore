@@ -27,6 +27,7 @@ logs/
 .idea/
 .vscode/
 .cursor/
+*.local.json
 *.swp
 *.swo
 .DS_Store
