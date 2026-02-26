@@ -150,9 +150,7 @@ providers:
 }
 ```
 
-**IntelliJ / JetBrains IDEs:**
-
-Settings → Appearance & Behavior → System Settings → HTTP Proxy → set host `localhost`, port `3000`.
+> **IntelliJ / JetBrains IDEs are not currently supported.** The JetBrains Copilot plugin only exposes an HTTP Proxy setting, which configures a forward proxy. PasteGuard is a reverse proxy and does not support the forward proxy protocol. VS Code is required for Copilot integration.
 
 Authentication (GitHub OAuth tokens) is handled entirely by the IDE — no API key configuration required in PasteGuard.
 
@@ -182,7 +180,7 @@ This fork (`raseidl/pasteguard`, based on `0.3.2`) adds the following on top of 
 
 | Change | Details |
 |--------|---------|
-| **GitHub Copilot proxy** | New `/copilot` route intercepts VS Code / IntelliJ Copilot requests. Masks PII and secrets in both Copilot Chat (`/chat/completions`) and inline ghost-text completions (`/v1/engines/:engine/completions`) before they reach GitHub's servers. |
+| **GitHub Copilot proxy** | New `/copilot` route intercepts VS Code Copilot requests. Masks PII and secrets in both Copilot Chat (`/chat/completions`) and inline ghost-text completions (`/v1/engines/:engine/completions`) before they reach GitHub's servers. IntelliJ/JetBrains IDEs are not supported (forward proxy limitation). |
 | **Header allowlists** | Wildcard proxy routes for OpenAI and Anthropic now forward only the headers each provider actually needs, instead of all client headers. |
 | **CORS restricted to localhost** | CORS policy changed from `*` (all origins) to localhost-only, blocking cross-origin requests from non-local web frontends. |
 | **Fork versioning** | Uses `{upstream-version}-fork.{n}` tags (e.g., `0.3.2-fork.1`) to track the upstream base version. |
