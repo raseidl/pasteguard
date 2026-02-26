@@ -55,7 +55,7 @@
 Run PasteGuard as a local proxy:
 
 ```bash
-docker run --rm -p 3000:3000 ghcr.io/sgasser/pasteguard:en
+docker run --rm -p 3000:3000 ghcr.io/raseidl/pasteguard:en
 ```
 
 Point your tools or app to PasteGuard instead of the provider:
@@ -77,7 +77,7 @@ client = OpenAI(base_url="http://localhost:3000/openai/v1")
 For German, Spanish, French, Italian, Dutch, Polish, Portuguese, and Romanian:
 
 ```bash
-docker run --rm -p 3000:3000 ghcr.io/sgasser/pasteguard:eu
+docker run --rm -p 3000:3000 ghcr.io/raseidl/pasteguard:eu
 ```
 
 For custom config, persistent logs, or other languages: **[Read the docs →](https://pasteguard.com/docs/installation)**
@@ -176,13 +176,16 @@ Both detected and masked in real time, including streaming responses.
 
 [Bun](https://bun.sh) · [Hono](https://hono.dev) · [Microsoft Presidio](https://microsoft.github.io/presidio/) · SQLite
 
-## Fork Information
+## Fork Changes
 
-This is a fork of [sgasser/pasteguard](https://github.com/sgasser/pasteguard), maintained by [raseidl](https://github.com/raseidl).
+This fork (`raseidl/pasteguard`, based on `0.3.2`) adds the following on top of [sgasser/pasteguard](https://github.com/sgasser/pasteguard):
 
-### Differences from Upstream
-
-- **GitHub Copilot support** — new `/copilot` route that intercepts VS Code / IntelliJ Copilot requests (Chat and inline completions) and applies the same PII/secrets masking as the OpenAI and Anthropic routes.
+| Change | Details |
+|--------|---------|
+| **GitHub Copilot proxy** | New `/copilot` route intercepts VS Code / IntelliJ Copilot requests. Masks PII and secrets in both Copilot Chat (`/chat/completions`) and inline ghost-text completions (`/v1/engines/:engine/completions`) before they reach GitHub's servers. |
+| **Header allowlists** | Wildcard proxy routes for OpenAI and Anthropic now forward only the headers each provider actually needs, instead of all client headers. |
+| **CORS restricted to localhost** | CORS policy changed from `*` (all origins) to localhost-only, blocking cross-origin requests from non-local web frontends. |
+| **Fork versioning** | Uses `{upstream-version}-fork.{n}` tags (e.g., `0.3.2-fork.1`) to track the upstream base version. |
 
 ### Syncing with Upstream
 

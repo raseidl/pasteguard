@@ -20,7 +20,7 @@ import {
   extractSystemText,
 } from "../masking/extractors/anthropic";
 import { unmaskResponse as unmaskPIIResponse } from "../pii/mask";
-import { callAnthropic } from "../providers/anthropic/client";
+import { callAnthropic, collectAnthropicHeaders } from "../providers/anthropic/client";
 import { createAnthropicUnmaskingStream } from "../providers/anthropic/stream-transformer";
 import {
   type AnthropicRequest,
@@ -196,9 +196,8 @@ anthropicRoutes.all("/*", async (c) => {
   return proxy(`${baseUrl}${path}${query}`, {
     ...c.req,
     headers: {
-      ...c.req.header(),
+      ...collectAnthropicHeaders(c.req.header()),
       "X-Forwarded-Host": c.req.header("host"),
-      host: undefined,
     },
   });
 });

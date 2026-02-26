@@ -31,7 +31,18 @@ const requestIdMiddleware = createMiddleware<{ Variables: Variables }>(async (c,
 
 // Middleware
 app.use("*", requestIdMiddleware);
-app.use("*", cors());
+app.use(
+  "*",
+  cors({
+    origin: (origin) => {
+      // Allow requests with no Origin header (CLI tools, SDKs, server-to-server)
+      if (!origin) return origin;
+      // Allow any localhost or 127.0.0.1 origin regardless of port
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return origin;
+      return null;
+    },
+  }),
+);
 app.use("*", logger());
 
 // Favicon

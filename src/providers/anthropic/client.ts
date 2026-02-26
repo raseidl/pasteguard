@@ -11,6 +11,38 @@ export const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_ANTHROPIC_URL = "https://api.anthropic.com";
 
 /**
+ * Headers to forward from the client to the Anthropic API.
+ */
+const ANTHROPIC_FORWARD_HEADERS = [
+  "x-api-key",
+  "authorization",
+  "anthropic-version",
+  "anthropic-beta",
+  "user-agent",
+  "x-request-id",
+];
+
+/**
+ * Collect Anthropic-relevant headers from incoming request headers
+ */
+export function collectAnthropicHeaders(
+  incomingHeaders: Record<string, string | undefined>,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  for (const key of ANTHROPIC_FORWARD_HEADERS) {
+    const value = incomingHeaders[key];
+    if (value) {
+      headers[key] = value;
+    }
+  }
+
+  return headers;
+}
+
+/**
  * Result from Anthropic client
  */
 export type AnthropicResult =

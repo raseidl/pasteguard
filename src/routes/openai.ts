@@ -20,7 +20,12 @@ import type { PlaceholderContext } from "../masking/context";
 import { openaiExtractor } from "../masking/extractors/openai";
 import { unmaskResponse as unmaskPIIResponse } from "../pii/mask";
 import { callLocal } from "../providers/local";
-import { callOpenAI, getOpenAIInfo, type ProviderResult } from "../providers/openai/client";
+import {
+  callOpenAI,
+  collectOpenAIHeaders,
+  getOpenAIInfo,
+  type ProviderResult,
+} from "../providers/openai/client";
 import { createUnmaskingStream } from "../providers/openai/stream-transformer";
 import {
   type OpenAIMessage,
@@ -152,9 +157,8 @@ openaiRoutes.all("/*", (c) => {
   return proxy(`${baseUrl}${path}${query}`, {
     ...c.req,
     headers: {
-      ...c.req.header(),
+      ...collectOpenAIHeaders(c.req.header()),
       "X-Forwarded-Host": c.req.header("host"),
-      host: undefined,
     },
   });
 });

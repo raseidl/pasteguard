@@ -10,6 +10,37 @@ import type { OpenAIRequest, OpenAIResponse } from "./types";
 export { ProviderError } from "../errors";
 
 /**
+ * Headers to forward from the client to the OpenAI API.
+ */
+const OPENAI_FORWARD_HEADERS = [
+  "authorization",
+  "openai-organization",
+  "openai-project",
+  "user-agent",
+  "x-request-id",
+];
+
+/**
+ * Collect OpenAI-relevant headers from incoming request headers
+ */
+export function collectOpenAIHeaders(
+  incomingHeaders: Record<string, string | undefined>,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  for (const key of OPENAI_FORWARD_HEADERS) {
+    const value = incomingHeaders[key];
+    if (value) {
+      headers[key] = value;
+    }
+  }
+
+  return headers;
+}
+
+/**
  * Result from provider (streaming or non-streaming)
  */
 export type ProviderResult =
