@@ -1,10 +1,14 @@
 /**
  * GitHub Copilot proxy route
  *
- * Intercepts Copilot requests from IDE plugins (VS Code, IntelliJ, Visual Studio)
- * and applies the same PII/secrets masking as the OpenAI and Anthropic routes.
+ * Intercepts Copilot requests from IDE plugins and applies the same
+ * PII/secrets masking as the OpenAI and Anthropic routes.
  *
- * Configure in VS Code:
+ * Currently supported: VS Code only
+ * (IntelliJ/JetBrains IDEs lack a URL override — their HTTP Proxy setting
+ * configures a forward proxy, which this reverse proxy doesn't support.)
+ *
+ * VS Code setup (settings.json):
  *   "github.copilot.advanced": { "debug.overrideCapiUrl": "http://localhost:3000/copilot" }
  *
  * Two endpoints are masked:

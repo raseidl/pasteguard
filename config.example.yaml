@@ -31,12 +31,12 @@ providers:
   # Masks PII/secrets in Copilot Chat and inline completions before they reach GitHub.
   # Authentication is handled by the IDE — no api_key needed.
   #
+  # Currently supported: VS Code only
+  # (IntelliJ/JetBrains IDEs lack a URL override — their HTTP Proxy setting
+  #  configures a forward proxy, which PasteGuard's reverse proxy doesn't support.)
+  #
   # VS Code setup (settings.json):
   #   "github.copilot.advanced": { "debug.overrideCapiUrl": "http://localhost:3000/copilot" }
-  #
-  # IntelliJ setup:
-  #   Settings → Appearance & Behavior → System Settings → HTTP Proxy
-  #   Set proxy host to localhost and port to 3000
   # copilot:
   #   base_url: https://api.githubcopilot.com
 
