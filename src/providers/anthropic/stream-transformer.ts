@@ -14,6 +14,9 @@ import { flushMaskingBuffer, unmaskStreamChunk } from "../../pii/mask";
 import { flushSecretsMaskingBuffer, unmaskSecretsStreamChunk } from "../../secrets/mask";
 import type { ContentBlockDeltaEvent, TextDelta } from "./types";
 
+// Module-level encoder — stateless, safe to share across all concurrent streams
+const encoder = new TextEncoder();
+
 /**
  * Creates a transform stream that unmasks Anthropic SSE content
  */
@@ -23,8 +26,7 @@ export function createAnthropicUnmaskingStream(
   config: MaskingConfig,
   secretsContext?: PlaceholderContext,
 ): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
+  const decoder = new TextDecoder(); // per-stream — has internal state with { stream: true }
   let piiBuffer = "";
   let secretsBuffer = "";
   let lineBuffer = "";
@@ -85,6 +87,12 @@ export function createAnthropicUnmaskingStream(
             // Process data lines
             if (line.startsWith("data: ")) {
               const data = line.slice(6);
+
+              // Skip full parse for events that can't contain text content
+              if (!data.includes('"text_delta"')) {
+                controller.enqueue(encoder.encode(`data: ${data}\n`));
+                continue;
+              }
 
               try {
                 const parsed = JSON.parse(data) as { type: string; delta?: { type: string } };

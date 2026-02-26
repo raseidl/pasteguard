@@ -16,6 +16,8 @@ export interface PlaceholderContext {
   reverseMapping: Record<string, string>;
   /** Counter per type for sequential numbering */
   counters: Record<string, number>;
+  /** Cached sorted placeholder keys (longest first) — invalidated when mapping changes */
+  _sortedKeys?: string[];
 }
 
 /**
@@ -71,14 +73,17 @@ export function restorePlaceholders(
 ): string {
   let result = text;
 
-  // Sort placeholders by length descending to avoid partial replacements
-  const placeholders = Object.keys(context.mapping).sort((a, b) => b.length - a.length);
+  // Sort placeholders by length descending to avoid partial replacements.
+  // Cache the sorted keys since this is called on every streaming chunk.
+  const placeholders =
+    context._sortedKeys ??
+    (context._sortedKeys = Object.keys(context.mapping).sort((a, b) => b.length - a.length));
 
   for (const placeholder of placeholders) {
+    if (!result.includes(placeholder)) continue;
     const originalValue = context.mapping[placeholder];
     const replacement = formatValue ? formatValue(originalValue) : originalValue;
-    // Replace all occurrences of the placeholder
-    result = result.split(placeholder).join(replacement);
+    result = result.replaceAll(placeholder, replacement);
   }
 
   return result;
@@ -127,6 +132,7 @@ export function replaceWithPlaceholders<T extends Span>(
       placeholder = generatePlaceholder(getType(item), context);
       context.mapping[placeholder] = originalValue;
       context.reverseMapping[originalValue] = placeholder;
+      context._sortedKeys = undefined; // invalidate cache
     }
 
     itemPlaceholders.set(item, placeholder);

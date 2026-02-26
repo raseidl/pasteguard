@@ -3,6 +3,10 @@ import type { PlaceholderContext } from "../../masking/context";
 import { flushMaskingBuffer, unmaskStreamChunk } from "../../pii/mask";
 import { flushSecretsMaskingBuffer, unmaskSecretsStreamChunk } from "../../secrets/mask";
 
+// Module-level encoder — stateless, safe to share across all concurrent streams
+const encoder = new TextEncoder();
+const DONE_BYTES = encoder.encode("data: [DONE]\n\n");
+
 /**
  * Creates a transform stream that unmasks SSE content for Copilot inline completions
  *
@@ -19,8 +23,7 @@ export function createCompletionUnmaskingStream(
   config: MaskingConfig,
   secretsContext?: PlaceholderContext,
 ): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
+  const decoder = new TextDecoder(); // per-stream — has internal state with { stream: true }
   let piiBuffer = "";
   let secretsBuffer = "";
 
@@ -69,7 +72,13 @@ export function createCompletionUnmaskingStream(
               const data = line.slice(6);
 
               if (data === "[DONE]") {
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.enqueue(DONE_BYTES);
+                continue;
+              }
+
+              // Skip full parse for events that can't have text content
+              if (!data.includes('"text"')) {
+                controller.enqueue(encoder.encode(`data: ${data}\n\n`));
                 continue;
               }
 

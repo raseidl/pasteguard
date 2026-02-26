@@ -12,6 +12,7 @@
 import { zValidator } from "@hono/zod-validator";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { proxy } from "hono/proxy";
 import { getConfig } from "../config";
 import type { PlaceholderContext } from "../masking/context";
 import {
@@ -188,7 +189,6 @@ anthropicRoutes.all("/*", async (c) => {
     );
   }
 
-  const { proxy } = await import("hono/proxy");
   const baseUrl = config.providers.anthropic.base_url || "https://api.anthropic.com";
   const path = c.req.path.replace(/^\/anthropic/, "");
   const query = c.req.url.includes("?") ? c.req.url.slice(c.req.url.indexOf("?")) : "";

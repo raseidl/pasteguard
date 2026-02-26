@@ -46,6 +46,7 @@ export interface Stats {
 export class Logger {
   private db: Database;
   private retentionDays: number;
+  private insertStmt: ReturnType<Database["prepare"]>;
 
   constructor() {
     const config = getConfig();
@@ -60,9 +61,20 @@ export class Logger {
 
     this.db = new Database(dbPath);
     this.initializeDatabase();
+    this.insertStmt = this.db.prepare(`
+      INSERT INTO request_logs
+        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, prompt_tokens, completion_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types, status_code, error_message)
+      VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
   }
 
   private initializeDatabase(): void {
+    this.db.run("PRAGMA journal_mode = WAL");
+    this.db.run("PRAGMA synchronous = NORMAL");
+    this.db.run("PRAGMA cache_size = -64000");
+    this.db.run("PRAGMA busy_timeout = 5000");
+
     this.db.run(`
       CREATE TABLE IF NOT EXISTS request_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,14 +125,7 @@ export class Logger {
   }
 
   log(entry: Omit<RequestLog, "id">): void {
-    const stmt = this.db.prepare(`
-      INSERT INTO request_logs
-        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, prompt_tokens, completion_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types, status_code, error_message)
-      VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
+    this.insertStmt.run(
       entry.timestamp,
       entry.mode,
       entry.provider,

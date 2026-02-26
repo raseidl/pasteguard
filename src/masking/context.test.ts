@@ -231,6 +231,39 @@ describe("restorePlaceholders", () => {
   });
 });
 
+describe("_sortedKeys cache invalidation", () => {
+  test("restores placeholder added after initial cache population", () => {
+    const ctx = createPlaceholderContext();
+
+    // Add first mapping directly and restore — this populates the cache
+    ctx.mapping["[[A_1]]"] = "alpha";
+    expect(restorePlaceholders("[[A_1]]", ctx)).toBe("alpha");
+
+    // Now add a second mapping via replaceWithPlaceholders (must invalidate cache)
+    replaceWithPlaceholders(
+      "beta",
+      [{ start: 0, end: 4, type: "B" }],
+      ctx,
+      (item: TestItem) => item.type,
+      (type, c) => incrementAndGenerate(type, c, testPlaceholder),
+      simpleResolveConflicts,
+    );
+
+    // Both the old and newly-added placeholder must be restored
+    expect(restorePlaceholders("[[A_1]] [[B_1]]", ctx)).toBe("alpha beta");
+  });
+
+  test("repeated restores produce consistent results", () => {
+    const ctx = createPlaceholderContext();
+    ctx.mapping["[[X_1]]"] = "value";
+
+    // First call populates cache; subsequent calls must return the same result
+    expect(restorePlaceholders("[[X_1]]", ctx)).toBe("value");
+    expect(restorePlaceholders("[[X_1]]", ctx)).toBe("value");
+    expect(restorePlaceholders("prefix [[X_1]] suffix", ctx)).toBe("prefix value suffix");
+  });
+});
+
 describe("replace -> restore roundtrip", () => {
   test("preserves original data", () => {
     const ctx = createPlaceholderContext();
