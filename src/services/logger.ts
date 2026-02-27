@@ -444,9 +444,10 @@ export function logRequest(data: RequestLogData, userAgent: string | null): numb
     const config = getConfig();
     const logger = getLogger();
 
-    // Safety: Never log content if secrets were detected
-    // Even if log_content is true, secrets are never logged
-    const shouldLogContent = data.maskedContent && !data.secretsDetected;
+    // Log masked content if configured and available.
+    // maskedContent is already fully masked (PII + secrets replaced with placeholders),
+    // so it is safe to store regardless of whether secrets were detected.
+    const shouldLogContent = config.logging.log_masked_content && !!data.maskedContent;
 
     // Only log secret types if configured to do so
     const shouldLogSecretTypes =

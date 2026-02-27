@@ -16,7 +16,7 @@
 services:
   # Production: Full all-in-one
   pasteguard:
-    image: ghcr.io/sgasser/pasteguard:${PASTEGUARD_TAG:-en}
+    image: ghcr.io/raseidl/pasteguard:${PASTEGUARD_TAG:-en}
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -35,7 +35,7 @@ services:
   # Development: Only Presidio (for local Bun with hot-reload)
   presidio:
     profiles: ["dev"]
-    image: ghcr.io/sgasser/pasteguard:${PASTEGUARD_TAG:-en}
+    image: ghcr.io/raseidl/pasteguard:${PASTEGUARD_TAG:-en}
     build:
       context: .
       dockerfile: docker/Dockerfile

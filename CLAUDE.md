@@ -119,3 +119,13 @@ See @docker/presidio/languages.yaml for 24 available languages.
 - `POST /anthropic/v1/messages` - Anthropic endpoint
 
 Response header `X-PasteGuard-PII-Masked: true` indicates PII was masked.
+
+## Upstream pull requests
+### Type checking passes
+bun run typecheck
+
+### Linting and formatting pass
+bun run check
+
+### Format code if needed
+bun run format

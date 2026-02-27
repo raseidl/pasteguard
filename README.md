@@ -72,6 +72,50 @@ client = OpenAI(base_url="http://localhost:3000/openai/v1")
 ```
 
 <details>
+<summary><strong>Docker Compose Setup</strong></summary>
+
+Copy the example config and start all services:
+
+```bash
+cp config.example.yaml config.yaml
+# Edit config.yaml: set your provider API keys, choose entities to detect
+docker compose up -d
+```
+
+Logs are persisted in `./data/pasteguard.db`. The dashboard is at [localhost:3000/dashboard](http://localhost:3000/dashboard).
+
+**Development** (Presidio in Docker, Bun locally with hot-reload):
+
+```bash
+docker compose up presidio -d
+bun install
+bun run dev
+```
+
+**European languages:**
+
+```bash
+PASTEGUARD_TAG=eu docker compose up -d
+```
+
+**Custom language set** (local build):
+
+```bash
+LANGUAGES=en,de,fr docker compose up -d --build
+```
+
+**Optional `.env` file** for API key fallbacks (not required if your client sends the `Authorization` header):
+
+```env
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+For full configuration reference, see [config.example.yaml](config.example.yaml) or the [docs](https://pasteguard.com/docs/installation).
+
+</details>
+
+<details>
 <summary><strong>European Languages</strong></summary>
 
 For German, Spanish, French, Italian, Dutch, Polish, Portuguese, and Romanian:
@@ -162,6 +206,13 @@ Every request is logged with masking details. See what was detected, what was ma
 
 [localhost:3000/dashboard](http://localhost:3000/dashboard)
 
+**Metrics included:**
+- Total requests, masked/routed count, API requests, requests per hour
+- Token usage: total tokens, input tokens, output tokens
+- **Cache hit rate** — percentage of input tokens served from Anthropic's prompt cache (requires `cache_control` in requests)
+- **Token anomaly alert** — shown when the last-hour average exceeds 2× the 7-day rolling average
+- Hover any metric title for a tooltip explanation
+
 ## What it catches
 
 **Personal data** — Names, emails, phone numbers, credit cards, IBANs, IP addresses, locations. Powered by [Microsoft Presidio](https://microsoft.github.io/presidio/). 24 languages.
@@ -176,15 +227,9 @@ Both detected and masked in real time, including streaming responses.
 
 ## Fork Changes
 
-This fork (`raseidl/pasteguard`, based on `0.3.2`) adds the following on top of [sgasser/pasteguard](https://github.com/sgasser/pasteguard):
+This fork (`raseidl/pasteguard`) is based on [sgasser/pasteguard](https://github.com/sgasser/pasteguard) `v0.3.2`.
 
-| Change | Details |
-|--------|---------|
-| **GitHub Copilot proxy** | New `/copilot` route intercepts VS Code Copilot requests. Masks PII and secrets in both Copilot Chat (`/chat/completions`) and inline ghost-text completions (`/v1/engines/:engine/completions`) before they reach GitHub's servers. IntelliJ/JetBrains IDEs are not supported (forward proxy limitation). |
-| **Header allowlists** | Wildcard proxy routes for OpenAI and Anthropic now forward only the headers each provider actually needs, instead of all client headers. |
-| **CORS restricted to localhost** | CORS policy changed from `*` (all origins) to localhost-only, blocking cross-origin requests from non-local web frontends. |
-| **Prompt caching fix** | Upstream Zod schemas silently stripped `cache_control` fields from nested Anthropic request objects, disabling prompt caching and inflating token costs. Fixed by adding `.passthrough()` to all nested schemas. ([PR #74](https://github.com/sgasser/pasteguard/pull/74)) |
-| **Fork versioning** | Uses `{upstream-version}-fork.{n}` tags (e.g., `0.3.2-fork.1`) to track the upstream base version. |
+See **[CHANGELOG.md](CHANGELOG.md)** for a detailed list of all changes per version.
 
 ### Syncing with Upstream
 

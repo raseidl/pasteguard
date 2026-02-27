@@ -2,6 +2,21 @@ import { describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import { filterWhitelistedEntities, type PIIEntity } from "../pii/detect";
 
+// Mock config so tests are isolated from config.yaml changes
+mock.module("../config", () => ({
+  getConfig: () => ({
+    mode: "mask",
+    logging: { database: ":memory:", retention_days: 30, log_content: false, log_masked_content: false },
+    secrets_detection: { enabled: true, log_detected_types: false, action: "mask", entities: ["OPENSSH_PRIVATE_KEY", "PEM_PRIVATE_KEY"], max_scan_chars: 200000 },
+    pii_detection: { enabled: true, fallback_language: "en", presidio_url: "http://localhost:5002", languages: ["en"], score_threshold: 0.7, entities: ["EMAIL_ADDRESS", "PERSON", "PHONE_NUMBER"] },
+    providers: { openai: { base_url: "https://api.openai.com/v1" } },
+    masking: { show_markers: false, marker_text: "[protected]", whitelist: [] },
+    server: { port: 3000, host: "0.0.0.0" },
+    dashboard: { enabled: true },
+    local: null,
+  }),
+}));
+
 // Mock the PII detector to avoid needing Presidio running
 const mockDetectPII = mock<(text: string, language: string) => Promise<PIIEntity[]>>(() =>
   Promise.resolve([]),
@@ -16,6 +31,7 @@ mock.module("../pii/detect", () => ({
 // Mock the logger to avoid database operations
 mock.module("../services/logger", () => ({
   logRequest: mock(() => {}),
+  getLogger: mock(() => ({ updateTokens: mock(() => {}) })),
 }));
 
 // Import after mocks are set up
