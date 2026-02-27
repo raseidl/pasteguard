@@ -299,4 +299,98 @@ describe("OpenAI Text Extractor", () => {
       expect(result.choices[0].message.content).toBeNull();
     });
   });
+
+  describe("unknown field preservation", () => {
+    test("preserves name field on message through applyMasked", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: "Contact john@example.com",
+          name: "test_user",
+          // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+        } as any,
+      ]);
+
+      const maskedSpans = [
+        {
+          path: "messages[0].content",
+          maskedText: "Contact [[EMAIL_ADDRESS_1]]",
+          messageIndex: 0,
+          partIndex: 0,
+        },
+      ];
+
+      const result = openaiExtractor.applyMasked(request, maskedSpans);
+
+      // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+      expect((result.messages[0] as any).name).toBe("test_user");
+      expect(result.messages[0].content).toBe("Contact [[EMAIL_ADDRESS_1]]");
+    });
+
+    test("preserves tool_calls on assistant message through applyMasked", () => {
+      const request = createRequest([
+        { role: "user", content: "What is the weather?" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_123",
+              type: "function",
+              function: { name: "get_weather", arguments: "{}" },
+            },
+          ],
+          // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+        } as any,
+      ]);
+
+      const maskedSpans = [
+        {
+          path: "messages[0].content",
+          maskedText: "What is the weather?",
+          messageIndex: 0,
+          partIndex: 0,
+        },
+      ];
+
+      const result = openaiExtractor.applyMasked(request, maskedSpans);
+
+      // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+      expect((result.messages[1] as any).tool_calls).toHaveLength(1);
+      // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+      expect((result.messages[1] as any).tool_calls[0].id).toBe("call_123");
+    });
+
+    test("preserves unknown fields on content part through applyMasked", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Hello John Doe",
+              custom_field: "preserved",
+              // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+            } as any,
+          ],
+        },
+      ]);
+
+      const maskedSpans = [
+        {
+          path: "messages[0].content[0].text",
+          maskedText: "Hello [[PERSON_1]]",
+          messageIndex: 0,
+          partIndex: 0,
+        },
+      ];
+
+      const result = openaiExtractor.applyMasked(request, maskedSpans);
+
+      // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+      const part = (result.messages[0].content as any[])[0];
+      expect(part.text).toBe("Hello [[PERSON_1]]");
+      expect(part.custom_field).toBe("preserved");
+    });
+  });
 });
