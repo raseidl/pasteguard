@@ -56,11 +56,13 @@ dashboardRoutes.get("/api/stats", (c) => {
 	const logger = getLogger();
 	const stats = logger.getStats();
 	const entityStats = logger.getEntityStats();
+	const tokenAnomaly = logger.getTokenAnomaly();
 
 	return c.json({
 		...stats,
 		entity_breakdown: entityStats,
 		mode: config.mode,
+		token_anomaly: tokenAnomaly,
 	});
 });
 

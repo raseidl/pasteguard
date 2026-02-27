@@ -35,6 +35,7 @@ import { detectPII, maskPII, type PIIDetectResult } from "../services/pii";
 import { processSecretsRequest, type SecretsProcessResult } from "../services/secrets";
 import {
   createLogData,
+  createTokenUpdateCallback,
   errorFormats,
   handleProviderError,
   setBlockedHeaders,
@@ -44,6 +45,7 @@ import {
   toSecretsHeaderData,
   toSecretsLogData,
 } from "./utils";
+import type { TokenUsage } from "./utils";
 
 export const anthropicRoutes = new Hono();
 
@@ -382,6 +384,29 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
   try {
     const result = await callAnthropic(request, config.providers.anthropic!, clientHeaders);
 
+    if (result.isStreaming) {
+      const logId = logRequest(
+        createLogData({
+          provider: "anthropic",
+          model: result.model || request.model,
+          startTime,
+          pii: toPIILogData(piiResult),
+          secrets: toSecretsLogData(secretsResult),
+          maskedContent,
+        }),
+        c.req.header("User-Agent") || null,
+      );
+      const onUsage = createTokenUpdateCallback(logId);
+      return respondStreaming(
+        c,
+        result.response,
+        piiMaskingContext,
+        secretsResult.maskingContext,
+        onUsage,
+      );
+    }
+
+    const usage = result.response.usage;
     logRequest(
       createLogData({
         provider: "anthropic",
@@ -390,13 +415,13 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
         maskedContent,
+        promptTokens: usage?.input_tokens,
+        completionTokens: usage?.output_tokens,
+        cacheCreationInputTokens: usage?.cache_creation_input_tokens,
+        cacheReadInputTokens: usage?.cache_read_input_tokens,
       }),
       c.req.header("User-Agent") || null,
     );
-
-    if (result.isStreaming) {
-      return respondStreaming(c, result.response, piiMaskingContext, secretsResult.maskingContext);
-    }
 
     return respondJson(c, result.response, piiMaskingContext, secretsResult.maskingContext);
   } catch (error) {
@@ -424,18 +449,20 @@ function respondStreaming(
   stream: ReadableStream<Uint8Array>,
   piiMaskingContext: PlaceholderContext | undefined,
   secretsContext: PlaceholderContext | undefined,
+  onUsage?: (tokens: TokenUsage) => void,
 ) {
   const config = getConfig();
   c.header("Content-Type", "text/event-stream");
   c.header("Cache-Control", "no-cache");
   c.header("Connection", "keep-alive");
 
-  if (piiMaskingContext || secretsContext) {
+  if (piiMaskingContext || secretsContext || onUsage) {
     const unmaskingStream = createAnthropicUnmaskingStream(
       stream,
       piiMaskingContext,
       config.masking,
       secretsContext,
+      onUsage,
     );
     return c.body(unmaskingStream);
   }

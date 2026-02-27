@@ -91,6 +91,11 @@ export async function callOpenAI(
     stream: isStreaming,
   };
 
+  // Request usage data in the final streaming chunk
+  if (isStreaming) {
+    body.stream_options = { include_usage: true };
+  }
+
   // OpenAI newer models use max_completion_tokens instead of max_tokens
   if (body.max_tokens) {
     body.max_completion_tokens = body.max_tokens;

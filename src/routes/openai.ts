@@ -40,6 +40,7 @@ import { processSecretsRequest, type SecretsProcessResult } from "../services/se
 import { extractTextContent } from "../utils/content";
 import {
   createLogData,
+  createTokenUpdateCallback,
   errorFormats,
   handleProviderError,
   setBlockedHeaders,
@@ -49,6 +50,7 @@ import {
   toSecretsHeaderData,
   toSecretsLogData,
 } from "./utils";
+import type { TokenUsage } from "./utils";
 
 export const openaiRoutes = new Hono();
 
@@ -269,6 +271,23 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
   try {
     const result = await callOpenAI(request, config.providers.openai, authHeader);
 
+    if (result.isStreaming) {
+      const logId = logRequest(
+        createLogData({
+          provider: "openai",
+          model: result.model || originalRequest.model || "unknown",
+          startTime,
+          pii: toPIILogData(piiResult),
+          secrets: toSecretsLogData(secretsResult),
+          maskedContent,
+        }),
+        c.req.header("User-Agent") || null,
+      );
+      const onUsage = createTokenUpdateCallback(logId);
+      return respondStreaming(c, result, piiMaskingContext, secretsResult.maskingContext, config.masking, onUsage);
+    }
+
+    const usage = result.response.usage;
     logRequest(
       createLogData({
         provider: "openai",
@@ -277,19 +296,11 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
         maskedContent,
+        promptTokens: usage?.prompt_tokens,
+        completionTokens: usage?.completion_tokens,
       }),
       c.req.header("User-Agent") || null,
     );
-
-    if (result.isStreaming) {
-      return respondStreaming(
-        c,
-        result,
-        piiMaskingContext,
-        secretsResult.maskingContext,
-        config.masking,
-      );
-    }
 
     return respondJson(
       c,
@@ -384,17 +395,19 @@ function respondStreaming(
   piiContext?: PlaceholderContext,
   secretsContext?: PlaceholderContext,
   maskingConfig?: MaskingConfig,
+  onUsage?: (tokens: TokenUsage) => void,
 ) {
   c.header("Content-Type", "text/event-stream");
   c.header("Cache-Control", "no-cache");
   c.header("Connection", "keep-alive");
 
-  if (piiContext || secretsContext) {
+  if (piiContext || secretsContext || onUsage) {
     const stream = createUnmaskingStream(
       result.response,
       piiContext,
       maskingConfig!,
       secretsContext,
+      onUsage,
     );
     return c.body(stream);
   }

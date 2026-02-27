@@ -196,6 +196,57 @@ const DashboardPage: FC = () => {
 								border-color: #d3ab8c; /* fallback for browsers without color-mix */
 								border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
 							}
+
+							/* Info tooltip */
+							.stat-info {
+								position: relative;
+								display: inline-flex;
+								align-items: center;
+								margin-left: 4px;
+								cursor: help;
+							}
+							.stat-info svg {
+								width: 12px;
+								height: 12px;
+								color: var(--color-text-subtle);
+								opacity: 0.5;
+								transition: opacity var(--duration-fast) var(--ease-out);
+							}
+							.stat-info:hover svg {
+								opacity: 1;
+							}
+							.stat-info .stat-tooltip {
+								display: none;
+								position: absolute;
+								bottom: calc(100% + 6px);
+								left: 50%;
+								transform: translateX(-50%);
+								background: var(--color-code-bg);
+								color: var(--color-code-text);
+								font-size: 0.68rem;
+								font-weight: 400;
+								letter-spacing: normal;
+								text-transform: none;
+								line-height: 1.5;
+								padding: 6px 10px;
+								border-radius: var(--radius-sm);
+								white-space: nowrap;
+								z-index: 50;
+								box-shadow: var(--shadow-md);
+								pointer-events: none;
+							}
+							.stat-info .stat-tooltip::after {
+								content: '';
+								position: absolute;
+								top: 100%;
+								left: 50%;
+								transform: translateX(-50%);
+								border: 4px solid transparent;
+								border-top-color: var(--color-code-bg);
+							}
+							.stat-info:hover .stat-tooltip {
+								display: block;
+							}
 						`,
 					}}
 				/>
@@ -204,6 +255,8 @@ const DashboardPage: FC = () => {
 				<div class="max-w-[1320px] mx-auto p-8 px-6">
 					<Header />
 					<StatsGrid />
+					<TokenStatsGrid />
+					<TokenAnomalyBanner />
 					<Charts />
 					<LogsSection />
 				</div>
@@ -246,23 +299,25 @@ const StatsGrid: FC = () => (
 		id="stats-grid"
 		class="grid grid-cols-5 gap-4 mb-8 [&[data-mode='route']]:grid-cols-7"
 	>
-		<StatCard label="Total Requests" valueId="total-requests" />
+		<StatCard label="Total Requests" valueId="total-requests" tooltip="Total number of requests proxied through PasteGuard" />
 		<StatCard
 			id="pii-card"
 			label="Routed Local"
 			labelId="pii-label"
 			valueId="pii-requests"
 			accent="accent"
+			tooltip="Requests where PII was detected and masked (or routed locally)"
 		/>
-		<StatCard label="API Requests" valueId="api-requests" accent="accent" />
-		<StatCard label="Avg PII Scan" valueId="avg-scan" accent="teal" />
-		<StatCard label="Requests/Hour" valueId="requests-hour" />
+		<StatCard label="API Requests" valueId="api-requests" accent="accent" tooltip="Direct API requests (not proxied through a provider)" />
+		<StatCard label="Avg PII Scan" valueId="avg-scan" accent="teal" tooltip="Average time to scan a request for PII and secrets" />
+		<StatCard label="Requests/Hour" valueId="requests-hour" tooltip="Number of requests in the last 60 minutes" />
 		<StatCard
 			id="proxy-card"
 			label="Proxy"
 			valueId="proxy-requests"
 			accent="info"
 			routeOnly
+			tooltip="Requests forwarded to upstream providers (OpenAI, Anthropic)"
 		/>
 		<StatCard
 			id="local-card"
@@ -270,6 +325,7 @@ const StatsGrid: FC = () => (
 			valueId="local-requests"
 			accent="success"
 			routeOnly
+			tooltip="Requests routed to local LLM due to PII detection"
 		/>
 	</div>
 );
@@ -281,7 +337,8 @@ const StatCard: FC<{
 	valueId: string;
 	accent?: "accent" | "info" | "success" | "teal";
 	routeOnly?: boolean;
-}> = ({ id, label, labelId, valueId, accent, routeOnly }) => {
+	tooltip?: string;
+}> = ({ id, label, labelId, valueId, accent, routeOnly, tooltip }) => {
 	const accentClass = accent
 		? {
 				accent: "text-accent",
@@ -301,6 +358,15 @@ const StatCard: FC<{
 				class="text-[0.7rem] font-medium uppercase tracking-widest text-text-muted mb-2"
 			>
 				{label}
+				{tooltip && (
+					<span class="stat-info">
+						<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+							<circle cx="8" cy="8" r="6.5" />
+							<path d="M8 11V7.5M8 5.5v-.01" stroke-linecap="round" />
+						</svg>
+						<span class="stat-tooltip">{tooltip}</span>
+					</span>
+				)}
 			</div>
 			<div
 				id={valueId}
@@ -312,6 +378,25 @@ const StatCard: FC<{
 		</div>
 	);
 };
+
+const TokenStatsGrid: FC = () => (
+	<div id="token-stats-grid" class="grid grid-cols-4 gap-4 mb-4">
+		<StatCard label="Total Tokens" valueId="total-tokens" tooltip="Sum of all input and output tokens across requests" />
+		<StatCard label="Input Tokens" valueId="total-prompt-tokens" accent="info" tooltip="Total prompt/input tokens sent to providers" />
+		<StatCard label="Output Tokens" valueId="total-completion-tokens" accent="teal" tooltip="Total completion/output tokens received from providers" />
+		<StatCard label="Cache Hit Rate" valueId="cache-hit-rate" accent="success" tooltip="Percentage of input tokens served from cache (Anthropic)" />
+	</div>
+);
+
+const TokenAnomalyBanner: FC = () => (
+	<div
+		id="token-anomaly-banner"
+		class="hidden mb-8 px-5 py-4 rounded-xl border border-error/20 bg-error/10 text-error text-sm animate-slide-down"
+	>
+		<span class="font-semibold">Token anomaly detected: </span>
+		<span id="token-anomaly-message" />
+	</div>
+);
 
 const Charts: FC = () => (
 	<div class="grid grid-cols-1 gap-4 mb-8 [&[data-mode='route']]:grid-cols-2">
@@ -402,11 +487,14 @@ const LogsSection: FC = () => (
 							<th class="bg-elevated font-mono text-[0.65rem] font-medium uppercase tracking-widest text-text-muted px-4 py-3.5 text-left border-b border-border sticky top-0">
 								Scan Time
 							</th>
+							<th class="bg-elevated font-mono text-[0.65rem] font-medium uppercase tracking-widest text-text-muted px-4 py-3.5 text-left border-b border-border sticky top-0">
+								Tokens
+							</th>
 						</tr>
 					</thead>
 					<tbody id="logs-body">
 						<tr>
-							<td colSpan={9}>
+							<td colSpan={10}>
 								<div class="flex flex-col justify-center items-center p-10 gap-3">
 									<div class="loader-bars">
 										<div class="loader-bar" />
@@ -490,6 +578,23 @@ async function fetchStats() {
     } else {
       chartEl.innerHTML = '<div class="flex flex-col items-center py-10 gap-3"><div class="loader-bars" style="opacity:0.3"><div class="loader-bar" style="animation:none"></div><div class="loader-bar" style="animation:none"></div><div class="loader-bar" style="animation:none"></div></div><div class="text-sm text-text-muted">No PII detected yet</div></div>';
     }
+
+    // Token stats
+    document.getElementById('total-tokens').textContent = (data.total_tokens || 0).toLocaleString();
+    document.getElementById('total-prompt-tokens').textContent = (data.total_prompt_tokens || 0).toLocaleString();
+    document.getElementById('total-completion-tokens').textContent = (data.total_completion_tokens || 0).toLocaleString();
+    document.getElementById('cache-hit-rate').textContent = (data.cache_hit_rate || 0).toFixed(1) + '%';
+
+    // Token anomaly banner
+    const anomalyBanner = document.getElementById('token-anomaly-banner');
+    if (data.token_anomaly && data.token_anomaly.isAnomalous) {
+      document.getElementById('token-anomaly-message').textContent =
+        data.token_anomaly.currentAvg.toLocaleString() + ' tokens/request (last hour) vs ' +
+        data.token_anomaly.rollingAvg.toLocaleString() + ' avg (7-day) — more than 2× above normal.';
+      anomalyBanner.classList.remove('hidden');
+    } else {
+      anomalyBanner.classList.add('hidden');
+    }
   } catch (err) {
     console.error('Failed to fetch stats:', err);
   }
@@ -566,7 +671,7 @@ async function fetchLogs() {
     const tbody = document.getElementById('logs-body');
 
     if (data.logs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9"><div class="text-center py-10 text-text-muted"><div class="text-2xl mb-3 opacity-40">📋</div><div class="text-sm">No requests yet</div></div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10"><div class="text-center py-10 text-text-muted"><div class="text-2xl mb-3 opacity-40">📋</div><div class="text-sm">No requests yet</div></div></td></tr>';
       return;
     }
 
@@ -621,6 +726,11 @@ async function fetchLogs() {
               : '<span class="text-text-muted">—</span>') +
           '</td>' +
           '<td class="font-mono text-[0.7rem] text-teal px-4 py-3 border-b border-border-subtle align-middle">' + log.scan_time_ms + 'ms</td>' +
+          '<td class="font-mono text-[0.7rem] text-text-secondary px-4 py-3 border-b border-border-subtle align-middle">' +
+            ((log.prompt_tokens != null || log.completion_tokens != null)
+              ? ((log.prompt_tokens || 0) + (log.completion_tokens || 0)).toLocaleString()
+              : '<span class="text-text-muted">—</span>') +
+          '</td>' +
         '</tr>';
 
       const detailContent = isError && log.error_message
@@ -629,7 +739,7 @@ async function fetchLogs() {
 
       const detailRow =
         '<tr id="detail-' + logId + '" class="' + (isExpanded ? 'detail-row-visible' : 'hidden') + '">' +
-          '<td colspan="9" class="p-0 bg-detail border-b border-border-subtle">' +
+          '<td colspan="10" class="p-0 bg-detail border-b border-border-subtle">' +
             '<div class="p-4 px-5 animate-slide-down">' + detailContent + '</div>' +
           '</td>' +
         '</tr>';

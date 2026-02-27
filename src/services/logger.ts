@@ -14,6 +14,8 @@ export interface RequestLog {
   scan_time_ms: number;
   prompt_tokens: number | null;
   completion_tokens: number | null;
+  cache_creation_input_tokens: number | null;
+  cache_read_input_tokens: number | null;
   user_agent: string | null;
   language: string;
   language_fallback: boolean;
@@ -23,6 +25,25 @@ export interface RequestLog {
   secrets_types: string | null;
   status_code: number | null;
   error_message: string | null;
+}
+
+/**
+ * Token usage data for deferred streaming updates
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+}
+
+/**
+ * Token anomaly detection result
+ */
+export interface TokenAnomalyResult {
+  isAnomalous: boolean;
+  currentAvg: number;
+  rollingAvg: number;
 }
 
 /**
@@ -38,6 +59,12 @@ export interface Stats {
   avg_scan_time_ms: number;
   total_tokens: number;
   requests_last_hour: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_cache_read_tokens: number;
+  total_cache_creation_tokens: number;
+  cache_hit_rate: number;
+  avg_tokens_per_request: number;
 }
 
 /**
@@ -63,9 +90,9 @@ export class Logger {
     this.initializeDatabase();
     this.insertStmt = this.db.prepare(`
       INSERT INTO request_logs
-        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, prompt_tokens, completion_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types, status_code, error_message)
+        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, prompt_tokens, completion_tokens, cache_creation_input_tokens, cache_read_input_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types, status_code, error_message)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
   }
 
@@ -111,6 +138,10 @@ export class Logger {
       this.db.run("ALTER TABLE request_logs ADD COLUMN status_code INTEGER");
       this.db.run("ALTER TABLE request_logs ADD COLUMN error_message TEXT");
     }
+    if (!columns.find((c) => c.name === "cache_creation_input_tokens")) {
+      this.db.run("ALTER TABLE request_logs ADD COLUMN cache_creation_input_tokens INTEGER");
+      this.db.run("ALTER TABLE request_logs ADD COLUMN cache_read_input_tokens INTEGER");
+    }
 
     // Create indexes for performance
     this.db.run(`
@@ -124,7 +155,7 @@ export class Logger {
     `);
   }
 
-  log(entry: Omit<RequestLog, "id">): void {
+  log(entry: Omit<RequestLog, "id">): number {
     this.insertStmt.run(
       entry.timestamp,
       entry.mode,
@@ -136,6 +167,8 @@ export class Logger {
       entry.scan_time_ms,
       entry.prompt_tokens,
       entry.completion_tokens,
+      entry.cache_creation_input_tokens ?? null,
+      entry.cache_read_input_tokens ?? null,
       entry.user_agent,
       entry.language,
       entry.language_fallback ? 1 : 0,
@@ -146,6 +179,25 @@ export class Logger {
       entry.status_code ?? null,
       entry.error_message ?? null,
     );
+    const result = this.db.query("SELECT last_insert_rowid() as id").get() as { id: number } | null;
+    return result?.id ?? 0;
+  }
+
+  /**
+   * Updates token counts for a previously logged request (used for streaming)
+   */
+  updateTokens(logId: number, tokens: TokenUsage): void {
+    this.db
+      .prepare(
+        `UPDATE request_logs SET prompt_tokens=?, completion_tokens=?, cache_creation_input_tokens=?, cache_read_input_tokens=? WHERE id=?`,
+      )
+      .run(
+        tokens.promptTokens,
+        tokens.completionTokens,
+        tokens.cacheCreationInputTokens ?? null,
+        tokens.cacheReadInputTokens ?? null,
+        logId,
+      );
   }
 
   /**
@@ -193,13 +245,26 @@ export class Logger {
       .prepare(`SELECT AVG(scan_time_ms) as avg FROM request_logs`)
       .get() as { avg: number | null };
 
-    // Total tokens
+    // Total tokens and breakdown
     const tokensResult = this.db
       .prepare(`
-      SELECT COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) as total
+      SELECT
+        COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) as total,
+        COALESCE(SUM(prompt_tokens), 0) as total_prompt,
+        COALESCE(SUM(completion_tokens), 0) as total_completion,
+        COALESCE(SUM(cache_read_input_tokens), 0) as total_cache_read,
+        COALESCE(SUM(cache_creation_input_tokens), 0) as total_cache_creation,
+        COUNT(CASE WHEN prompt_tokens IS NOT NULL OR completion_tokens IS NOT NULL THEN 1 END) as token_requests
       FROM request_logs
     `)
-      .get() as { total: number };
+      .get() as {
+        total: number;
+        total_prompt: number;
+        total_completion: number;
+        total_cache_read: number;
+        total_cache_creation: number;
+        token_requests: number;
+      };
 
     // Requests last hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -213,6 +278,14 @@ export class Logger {
     const total = totalResult.count;
     const pii = piiResult.count;
 
+    const totalPrompt = tokensResult.total_prompt;
+    const cacheRead = tokensResult.total_cache_read;
+    const cacheCreation = tokensResult.total_cache_creation;
+    const tokenRequests = tokensResult.token_requests;
+
+    // Total effective input = new tokens + cache read + cache creation
+    const totalEffectiveInput = totalPrompt + cacheRead + cacheCreation;
+
     return {
       total_requests: total,
       pii_requests: pii,
@@ -223,6 +296,16 @@ export class Logger {
       avg_scan_time_ms: Math.round(scanTimeResult.avg || 0),
       total_tokens: tokensResult.total,
       requests_last_hour: hourResult.count,
+      total_prompt_tokens: totalPrompt,
+      total_completion_tokens: tokensResult.total_completion,
+      total_cache_read_tokens: cacheRead,
+      total_cache_creation_tokens: cacheCreation,
+      cache_hit_rate:
+        totalEffectiveInput > 0
+          ? Math.round((cacheRead / totalEffectiveInput) * 100 * 10) / 10
+          : 0,
+      avg_tokens_per_request:
+        tokenRequests > 0 ? Math.round(tokensResult.total / tokenRequests) : 0,
     };
   }
 
@@ -251,6 +334,48 @@ export class Logger {
     return Array.from(entityCounts.entries())
       .map(([entity, count]) => ({ entity, count }))
       .sort((a, b) => b.count - a.count);
+  }
+
+  /**
+   * Detects anomalous token usage by comparing last-hour avg vs 7-day rolling avg.
+   * Returns null if there is insufficient historical data (< 10 requests with tokens).
+   */
+  getTokenAnomaly(): TokenAnomalyResult | null {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const historical = this.db
+      .prepare(
+        `SELECT COUNT(*) as count,
+                AVG(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)) as avg_tokens
+         FROM request_logs
+         WHERE timestamp >= ? AND timestamp < ?
+           AND (prompt_tokens IS NOT NULL OR completion_tokens IS NOT NULL)`,
+      )
+      .get(sevenDaysAgo, oneHourAgo) as { count: number; avg_tokens: number | null };
+
+    if (!historical || historical.count < 10 || !historical.avg_tokens) return null;
+
+    const current = this.db
+      .prepare(
+        `SELECT COUNT(*) as count,
+                AVG(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)) as avg_tokens
+         FROM request_logs
+         WHERE timestamp >= ?
+           AND (prompt_tokens IS NOT NULL OR completion_tokens IS NOT NULL)`,
+      )
+      .get(oneHourAgo) as { count: number; avg_tokens: number | null };
+
+    if (!current || current.count < 1 || !current.avg_tokens) return null;
+
+    const rollingAvg = Math.round(historical.avg_tokens);
+    const currentAvg = Math.round(current.avg_tokens);
+
+    return {
+      isAnomalous: rollingAvg > 0 && currentAvg > rollingAvg * 2,
+      currentAvg,
+      rollingAvg,
+    };
   }
 
   /**
@@ -302,6 +427,8 @@ export interface RequestLogData {
   scanTimeMs: number;
   promptTokens?: number;
   completionTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
   language: string;
   languageFallback: boolean;
   detectedLanguage?: string;
@@ -312,7 +439,7 @@ export interface RequestLogData {
   errorMessage?: string;
 }
 
-export function logRequest(data: RequestLogData, userAgent: string | null): void {
+export function logRequest(data: RequestLogData, userAgent: string | null): number | undefined {
   try {
     const config = getConfig();
     const logger = getLogger();
@@ -325,7 +452,7 @@ export function logRequest(data: RequestLogData, userAgent: string | null): void
     const shouldLogSecretTypes =
       config.secrets_detection.log_detected_types && data.secretsTypes?.length;
 
-    logger.log({
+    return logger.log({
       timestamp: data.timestamp,
       mode: data.mode,
       provider: data.provider,
@@ -336,6 +463,8 @@ export function logRequest(data: RequestLogData, userAgent: string | null): void
       scan_time_ms: data.scanTimeMs,
       prompt_tokens: data.promptTokens ?? null,
       completion_tokens: data.completionTokens ?? null,
+      cache_creation_input_tokens: data.cacheCreationInputTokens ?? null,
+      cache_read_input_tokens: data.cacheReadInputTokens ?? null,
       user_agent: userAgent,
       language: data.language,
       language_fallback: data.languageFallback,
@@ -348,5 +477,6 @@ export function logRequest(data: RequestLogData, userAgent: string | null): void
     });
   } catch (error) {
     console.error("Failed to log request:", error);
+    return undefined;
   }
 }

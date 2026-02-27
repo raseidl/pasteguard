@@ -332,6 +332,127 @@ describe("createAnthropicUnmaskingStream", () => {
     expect(result).toContain("Plain text without placeholders");
   });
 
+  describe("onUsage callback", () => {
+    test("extracts input tokens from message_start", async () => {
+      const messageStart = createAnthropicEvent("message_start", {
+        type: "message_start",
+        message: {
+          id: "msg_123",
+          usage: { input_tokens: 150, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      });
+      const source = createSSEStream([messageStart]);
+
+      let captured: unknown = null;
+      const onUsage = (tokens: unknown) => { captured = tokens; };
+
+      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      await consumeStream(stream);
+
+      expect(captured).toEqual({ promptTokens: 150, completionTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 });
+    });
+
+    test("extracts output tokens from message_delta", async () => {
+      const messageDelta = createAnthropicEvent("message_delta", {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: { output_tokens: 75 },
+      });
+      const source = createSSEStream([messageDelta]);
+
+      let captured: unknown = null;
+      const onUsage = (tokens: unknown) => { captured = tokens; };
+
+      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      await consumeStream(stream);
+
+      expect(captured).toEqual({ promptTokens: 0, completionTokens: 75 });
+    });
+
+    test("accumulates both input and output tokens across events", async () => {
+      const messageStart = createAnthropicEvent("message_start", {
+        type: "message_start",
+        message: { id: "msg_1", usage: { input_tokens: 200 } },
+      });
+      const textDelta = createTextDelta("Hello");
+      const messageDelta = createAnthropicEvent("message_delta", {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: { output_tokens: 50 },
+      });
+      const source = createSSEStream([messageStart, textDelta, messageDelta]);
+
+      let captured: unknown = null;
+      const onUsage = (tokens: unknown) => { captured = tokens; };
+
+      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      await consumeStream(stream);
+
+      expect(captured).toMatchObject({ promptTokens: 200, completionTokens: 50 });
+    });
+
+    test("extracts cache tokens from message_start", async () => {
+      const messageStart = createAnthropicEvent("message_start", {
+        type: "message_start",
+        message: {
+          id: "msg_2",
+          usage: {
+            input_tokens: 100,
+            cache_creation_input_tokens: 5000,
+            cache_read_input_tokens: 95000,
+          },
+        },
+      });
+      const source = createSSEStream([messageStart]);
+
+      let captured: unknown = null;
+      const onUsage = (tokens: unknown) => { captured = tokens; };
+
+      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      await consumeStream(stream);
+
+      expect(captured).toMatchObject({
+        promptTokens: 100,
+        cacheCreationInputTokens: 5000,
+        cacheReadInputTokens: 95000,
+      });
+    });
+
+    test("does not call onUsage when no token events seen", async () => {
+      const ping = createAnthropicEvent("ping", { type: "ping" });
+      const source = createSSEStream([ping]);
+
+      let called = false;
+      const onUsage = () => { called = true; };
+
+      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      await consumeStream(stream);
+
+      expect(called).toBe(false);
+    });
+
+    test("still passes through all events when onUsage is set", async () => {
+      const messageStart = createAnthropicEvent("message_start", {
+        type: "message_start",
+        message: { id: "msg_3", usage: { input_tokens: 10 } },
+      });
+      const textDelta = createTextDelta("Hi");
+      const messageDelta = createAnthropicEvent("message_delta", {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: { output_tokens: 5 },
+      });
+      const source = createSSEStream([messageStart, textDelta, messageDelta]);
+
+      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, () => {});
+      const result = await consumeStream(stream);
+
+      expect(result).toContain("message_start");
+      expect(result).toContain("text_delta");
+      expect(result).toContain("message_delta");
+    });
+  });
+
   test("handles multiple consecutive text deltas", async () => {
     const context = createMaskingContext();
     context.mapping["[[PERSON_1]]"] = "Jane";

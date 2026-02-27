@@ -8,8 +8,8 @@
 import type { Context } from "hono";
 import { getConfig } from "../config";
 import { ProviderError } from "../providers/errors";
-import type { RequestLogData } from "../services/logger";
-import { logRequest } from "../services/logger";
+import type { RequestLogData, TokenUsage } from "../services/logger";
+import { getLogger, logRequest } from "../services/logger";
 import type { PIIDetectResult } from "../services/pii";
 import type { SecretsProcessResult } from "../services/secrets";
 
@@ -215,6 +215,10 @@ export interface CreateLogDataOptions {
   maskedContent?: string;
   statusCode?: number;
   errorMessage?: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
 }
 
 /**
@@ -222,8 +226,20 @@ export interface CreateLogDataOptions {
  */
 export function createLogData(options: CreateLogDataOptions): RequestLogData {
   const config = getConfig();
-  const { provider, model, startTime, pii, secrets, maskedContent, statusCode, errorMessage } =
-    options;
+  const {
+    provider,
+    model,
+    startTime,
+    pii,
+    secrets,
+    maskedContent,
+    statusCode,
+    errorMessage,
+    promptTokens,
+    completionTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+  } = options;
 
   return {
     timestamp: new Date().toISOString(),
@@ -242,8 +258,31 @@ export function createLogData(options: CreateLogDataOptions): RequestLogData {
     secretsTypes: secrets?.types,
     statusCode,
     errorMessage,
+    promptTokens,
+    completionTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
   };
 }
+
+/**
+ * Creates a callback that updates token counts for a streaming log entry.
+ * Returns undefined if logId is not available (logging failed).
+ */
+export function createTokenUpdateCallback(
+  logId: number | undefined,
+): ((tokens: TokenUsage) => void) | undefined {
+  if (logId === undefined) return undefined;
+  return (tokens: TokenUsage) => {
+    try {
+      getLogger().updateTokens(logId, tokens);
+    } catch (e) {
+      console.error("Token update failed:", e);
+    }
+  };
+}
+
+export type { TokenUsage };
 
 // ============================================================================
 // Provider Error Handling

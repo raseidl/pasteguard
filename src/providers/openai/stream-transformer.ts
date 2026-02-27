@@ -2,6 +2,7 @@ import type { MaskingConfig } from "../../config";
 import type { PlaceholderContext } from "../../masking/context";
 import { flushMaskingBuffer, unmaskStreamChunk } from "../../pii/mask";
 import { flushSecretsMaskingBuffer, unmaskSecretsStreamChunk } from "../../secrets/mask";
+import type { TokenUsage } from "../../services/logger";
 
 // Module-level encoder — stateless, safe to share across all concurrent streams
 const encoder = new TextEncoder();
@@ -20,10 +21,12 @@ export function createUnmaskingStream(
   piiContext: PlaceholderContext | undefined,
   config: MaskingConfig,
   secretsContext?: PlaceholderContext,
+  onUsage?: (tokens: TokenUsage) => void,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder(); // per-stream — has internal state with { stream: true }
   let piiBuffer = "";
   let secretsBuffer = "";
+  let capturedUsage: TokenUsage | undefined;
 
   return new ReadableStream({
     async start(controller) {
@@ -34,6 +37,15 @@ export function createUnmaskingStream(
           const { done, value } = await reader.read();
 
           if (done) {
+            // Fire token usage callback if we captured usage data
+            if (onUsage && capturedUsage) {
+              try {
+                onUsage(capturedUsage);
+              } catch (e) {
+                console.error("Token usage callback error:", e);
+              }
+            }
+
             // Flush remaining buffer content before closing
             let flushed = "";
 
@@ -82,14 +94,23 @@ export function createUnmaskingStream(
                 continue;
               }
 
-              // Skip full parse for events that can't have text content
-              if (!data.includes('"content"')) {
+              // Skip full parse for events that can't have text content or usage
+              if (!data.includes('"content"') && !(onUsage && data.includes('"usage"'))) {
                 controller.enqueue(encoder.encode(`data: ${data}\n\n`));
                 continue;
               }
 
               try {
                 const parsed = JSON.parse(data);
+
+                // Capture token usage from final usage chunk
+                if (onUsage && parsed.usage) {
+                  capturedUsage = {
+                    promptTokens: parsed.usage.prompt_tokens ?? 0,
+                    completionTokens: parsed.usage.completion_tokens ?? 0,
+                  };
+                }
+
                 const content = parsed.choices?.[0]?.delta?.content || "";
 
                 if (content) {

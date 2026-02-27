@@ -183,6 +183,7 @@ This fork (`raseidl/pasteguard`, based on `0.3.2`) adds the following on top of 
 | **GitHub Copilot proxy** | New `/copilot` route intercepts VS Code Copilot requests. Masks PII and secrets in both Copilot Chat (`/chat/completions`) and inline ghost-text completions (`/v1/engines/:engine/completions`) before they reach GitHub's servers. IntelliJ/JetBrains IDEs are not supported (forward proxy limitation). |
 | **Header allowlists** | Wildcard proxy routes for OpenAI and Anthropic now forward only the headers each provider actually needs, instead of all client headers. |
 | **CORS restricted to localhost** | CORS policy changed from `*` (all origins) to localhost-only, blocking cross-origin requests from non-local web frontends. |
+| **Prompt caching fix** | Upstream Zod schemas silently stripped `cache_control` fields from nested Anthropic request objects, disabling prompt caching and inflating token costs. Fixed by adding `.passthrough()` to all nested schemas. ([PR #74](https://github.com/sgasser/pasteguard/pull/74)) |
 | **Fork versioning** | Uses `{upstream-version}-fork.{n}` tags (e.g., `0.3.2-fork.1`) to track the upstream base version. |
 
 ### Syncing with Upstream
