@@ -737,4 +737,117 @@ describe("Anthropic Text Extractor", () => {
       expect((result.content[0] as { text: string }).text).toBe("No placeholders here");
     });
   });
+
+  describe("cache_control preservation", () => {
+    test("preserves cache_control on text block through applyMasked", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Contact john@example.com",
+              cache_control: { type: "ephemeral" },
+            } as any,
+          ],
+        },
+      ]);
+
+      const maskedSpans = [
+        {
+          path: "messages[0].content[0].text",
+          maskedText: "Contact [[EMAIL_ADDRESS_1]]",
+          messageIndex: 0,
+          partIndex: 0,
+        },
+      ];
+
+      const result = anthropicExtractor.applyMasked(request, maskedSpans);
+      const block = (result.messages[0].content as any[])[0];
+
+      expect(block.text).toBe("Contact [[EMAIL_ADDRESS_1]]");
+      expect(block.cache_control).toEqual({ type: "ephemeral" });
+    });
+
+    test("preserves cache_control on system prompt block through applyMasked", () => {
+      const request = createRequest(
+        [{ role: "user", content: "Hello" }],
+        [
+          {
+            type: "text",
+            text: "You are an assistant. User is John Doe.",
+            cache_control: { type: "ephemeral" },
+          } as any,
+        ],
+      );
+
+      const maskedSpans = [
+        {
+          path: "system[0].text",
+          maskedText: "You are an assistant. User is [[PERSON_1]].",
+          messageIndex: -1,
+          partIndex: 0,
+        },
+      ];
+
+      const result = anthropicExtractor.applyMasked(request, maskedSpans);
+      const block = (result.system as any[])[0];
+
+      expect(block.text).toBe("You are an assistant. User is [[PERSON_1]].");
+      expect(block.cache_control).toEqual({ type: "ephemeral" });
+    });
+
+    test("preserves unknown fields on message through applyMasked", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: "Hello",
+          extra_field: "preserved",
+        } as any,
+      ]);
+
+      const maskedSpans = [
+        {
+          path: "messages[0].content",
+          maskedText: "Hello",
+          messageIndex: 0,
+          partIndex: 0,
+        },
+      ];
+
+      const result = anthropicExtractor.applyMasked(request, maskedSpans);
+
+      expect((result.messages[0] as any).extra_field).toBe("preserved");
+    });
+
+    test("preserves cache_control when no masking is applied", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "No PII here",
+              cache_control: { type: "ephemeral" },
+            } as any,
+          ],
+        },
+      ]);
+
+      // applyMasked with no-op span (text unchanged)
+      const maskedSpans = [
+        {
+          path: "messages[0].content[0].text",
+          maskedText: "No PII here",
+          messageIndex: 0,
+          partIndex: 0,
+        },
+      ];
+
+      const result = anthropicExtractor.applyMasked(request, maskedSpans);
+      const block = (result.messages[0].content as any[])[0];
+
+      expect(block.cache_control).toEqual({ type: "ephemeral" });
+    });
+  });
 });

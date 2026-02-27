@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+import { AnthropicRequestSchema } from "../providers/anthropic/types";
 import { anthropicRoutes } from "./anthropic";
 
 const app = new Hono();
@@ -66,5 +67,79 @@ describe("POST /anthropic/v1/messages", () => {
     });
 
     expect(res.status).toBe(400);
+  });
+});
+
+describe("Zod schema preserves cache_control and unknown fields", () => {
+  const base = {
+    model: "claude-3-sonnet-20240229",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: "Hello" }],
+  };
+
+  test("preserves cache_control on text content block", () => {
+    const input = {
+      ...base,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Hello", cache_control: { type: "ephemeral" } }],
+        },
+      ],
+    };
+
+    const result = AnthropicRequestSchema.parse(input);
+    const block = (result.messages[0].content as any[])[0];
+
+    expect(block.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  test("preserves cache_control on system prompt block", () => {
+    const input = {
+      ...base,
+      system: [{ type: "text", text: "You are helpful.", cache_control: { type: "ephemeral" } }],
+    };
+
+    const result = AnthropicRequestSchema.parse(input);
+    const block = (result.system as any[])[0];
+
+    expect(block.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  test("preserves cache_control on tool definition", () => {
+    const input = {
+      ...base,
+      tools: [
+        {
+          name: "get_weather",
+          description: "Get weather",
+          input_schema: { type: "object", properties: { city: { type: "string" } } },
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+    };
+
+    const result = AnthropicRequestSchema.parse(input);
+
+    expect((result.tools![0] as any).cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  test("preserves cache_control on message", () => {
+    const input = {
+      ...base,
+      messages: [{ role: "user", content: "Hello", cache_control: { type: "ephemeral" } }],
+    };
+
+    const result = AnthropicRequestSchema.parse(input);
+
+    expect((result.messages[0] as any).cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  test("preserves unknown top-level fields", () => {
+    const input = { ...base, custom_field: "preserved" };
+
+    const result = AnthropicRequestSchema.parse(input);
+
+    expect((result as any).custom_field).toBe("preserved");
   });
 });
