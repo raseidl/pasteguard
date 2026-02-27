@@ -6,10 +6,13 @@
 import { z } from "zod";
 
 // Content block types
+// All schemas use .passthrough() to preserve fields PasteGuard doesn't need to inspect
+// (e.g. cache_control, citations). Without this, Zod silently strips unknown fields,
+// breaking features like Anthropic prompt caching.
 export const TextBlockSchema = z.object({
   type: z.literal("text"),
   text: z.string(),
-});
+}).passthrough();
 
 export const ImageBlockSchema = z.object({
   type: z.literal("image"),
@@ -18,26 +21,26 @@ export const ImageBlockSchema = z.object({
     media_type: z.string().optional(),
     data: z.string().optional(),
     url: z.string().optional(),
-  }),
-});
+  }).passthrough(),
+}).passthrough();
 
 export const ToolUseBlockSchema = z.object({
   type: z.literal("tool_use"),
   id: z.string(),
   name: z.string(),
   input: z.record(z.unknown()),
-});
+}).passthrough();
 
 export const ThinkingBlockSchema = z.object({
   type: z.literal("thinking"),
   thinking: z.string(),
   signature: z.string().optional(),
-});
+}).passthrough();
 
 export const RedactedThinkingBlockSchema = z.object({
   type: z.literal("redacted_thinking"),
   data: z.string(),
-});
+}).passthrough();
 
 // ToolResultBlock can contain nested content blocks, so we define it with z.any() for content
 // and provide proper type separately
@@ -46,7 +49,7 @@ export const ToolResultBlockSchema = z.object({
   tool_use_id: z.string(),
   content: z.union([z.string(), z.array(z.any())]),
   is_error: z.boolean().optional(),
-});
+}).passthrough();
 
 export const ContentBlockSchema = z.discriminatedUnion("type", [
   TextBlockSchema,
@@ -61,7 +64,7 @@ export const ContentBlockSchema = z.discriminatedUnion("type", [
 export const AnthropicMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.union([z.string(), z.array(ContentBlockSchema)]),
-});
+}).passthrough();
 
 export const ToolSchema = z.object({
   name: z.string(),
@@ -70,8 +73,8 @@ export const ToolSchema = z.object({
     type: z.literal("object"),
     properties: z.record(z.unknown()).optional(),
     required: z.array(z.string()).optional(),
-  }),
-});
+  }).passthrough(),
+}).passthrough();
 
 export const AnthropicRequestSchema = z
   .object({
@@ -85,13 +88,14 @@ export const AnthropicRequestSchema = z
         type: z.enum(["auto", "any", "tool"]),
         name: z.string().optional(),
       })
+      .passthrough()
       .optional(),
     stream: z.boolean().optional(),
     temperature: z.number().optional(),
     top_p: z.number().optional(),
     top_k: z.number().optional(),
     stop_sequences: z.array(z.string()).optional(),
-    metadata: z.object({ user_id: z.string().optional() }).optional(),
+    metadata: z.object({ user_id: z.string().optional() }).passthrough().optional(),
   })
   .passthrough();
 
