@@ -748,6 +748,7 @@ describe("Anthropic Text Extractor", () => {
               type: "text",
               text: "Contact john@example.com",
               cache_control: { type: "ephemeral" },
+              // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
             } as any,
           ],
         },
@@ -763,6 +764,7 @@ describe("Anthropic Text Extractor", () => {
       ];
 
       const result = anthropicExtractor.applyMasked(request, maskedSpans);
+      // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
       const block = (result.messages[0].content as any[])[0];
 
       expect(block.text).toBe("Contact [[EMAIL_ADDRESS_1]]");
@@ -777,6 +779,7 @@ describe("Anthropic Text Extractor", () => {
             type: "text",
             text: "You are an assistant. User is John Doe.",
             cache_control: { type: "ephemeral" },
+            // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
           } as any,
         ],
       );
@@ -791,6 +794,7 @@ describe("Anthropic Text Extractor", () => {
       ];
 
       const result = anthropicExtractor.applyMasked(request, maskedSpans);
+      // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
       const block = (result.system as any[])[0];
 
       expect(block.text).toBe("You are an assistant. User is [[PERSON_1]].");
@@ -803,6 +807,7 @@ describe("Anthropic Text Extractor", () => {
           role: "user",
           content: "Hello",
           extra_field: "preserved",
+          // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
         } as any,
       ]);
 
@@ -817,6 +822,7 @@ describe("Anthropic Text Extractor", () => {
 
       const result = anthropicExtractor.applyMasked(request, maskedSpans);
 
+      // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
       expect((result.messages[0] as any).extra_field).toBe("preserved");
     });
 
@@ -829,6 +835,7 @@ describe("Anthropic Text Extractor", () => {
               type: "text",
               text: "No PII here",
               cache_control: { type: "ephemeral" },
+              // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
             } as any,
           ],
         },
@@ -845,6 +852,7 @@ describe("Anthropic Text Extractor", () => {
       ];
 
       const result = anthropicExtractor.applyMasked(request, maskedSpans);
+      // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
       const block = (result.messages[0].content as any[])[0];
 
       expect(block.cache_control).toEqual({ type: "ephemeral" });
