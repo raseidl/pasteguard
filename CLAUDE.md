@@ -129,3 +129,6 @@ bun run check
 
 ### Format code if needed
 bun run format
+
+## Don'ts
+- Never commit or push without asking for permission

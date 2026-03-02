@@ -4,6 +4,7 @@ import { basicAuth } from "hono/basic-auth";
 import { tailwind } from "hono-tailwind";
 import { z } from "zod";
 import { getConfig } from "../config";
+import { getPIIDetector } from "../pii/detect";
 import { getLogger } from "../services/logger";
 import DashboardPage from "../views/dashboard/page";
 
@@ -63,6 +64,7 @@ dashboardRoutes.get("/api/stats", (c) => {
 		entity_breakdown: entityStats,
 		mode: config.mode,
 		token_anomaly: tokenAnomaly,
+		pii_cache: getPIIDetector().getCacheStats(),
 	});
 });
 

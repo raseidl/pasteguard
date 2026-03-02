@@ -256,6 +256,7 @@ const DashboardPage: FC = () => {
 					<Header />
 					<StatsGrid />
 					<TokenStatsGrid />
+					<PiiCacheGrid />
 					<TokenAnomalyBanner />
 					<Charts />
 					<LogsSection />
@@ -385,6 +386,24 @@ const TokenStatsGrid: FC = () => (
 		<StatCard label="Input Tokens" valueId="total-prompt-tokens" accent="info" tooltip="Total prompt/input tokens sent to providers" />
 		<StatCard label="Output Tokens" valueId="total-completion-tokens" accent="teal" tooltip="Total completion/output tokens received from providers" />
 		<StatCard label="Cache Hit Rate" valueId="cache-hit-rate" accent="success" tooltip="Percentage of input tokens served from cache (Anthropic)" />
+	</div>
+);
+
+const PiiCacheGrid: FC = () => (
+	<div class="mb-4">
+		<div class="grid grid-cols-2 gap-4" style="max-width: calc(50% - 8px)">
+			<StatCard
+				label="PII Cache Hit Rate"
+				valueId="pii-cache-hit-rate"
+				accent="teal"
+				tooltip="% of Presidio scan calls served from in-memory cache (higher = fewer HTTP round-trips)"
+			/>
+			<StatCard
+				label="PII Cache Size"
+				valueId="pii-cache-size"
+				tooltip="Active entries in the in-memory PII cache (max 1,000, TTL 1h)"
+			/>
+		</div>
 	</div>
 );
 
@@ -577,6 +596,12 @@ async function fetchStats() {
       ).join('');
     } else {
       chartEl.innerHTML = '<div class="flex flex-col items-center py-10 gap-3"><div class="loader-bars" style="opacity:0.3"><div class="loader-bar" style="animation:none"></div><div class="loader-bar" style="animation:none"></div><div class="loader-bar" style="animation:none"></div></div><div class="text-sm text-text-muted">No PII detected yet</div></div>';
+    }
+
+    // PII cache stats
+    if (data.pii_cache) {
+      document.getElementById('pii-cache-hit-rate').textContent = data.pii_cache.hitRate.toFixed(1) + '%';
+      document.getElementById('pii-cache-size').textContent = data.pii_cache.size + ' / ' + data.pii_cache.maxSize;
     }
 
     // Token stats

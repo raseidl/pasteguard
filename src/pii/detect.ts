@@ -54,18 +54,25 @@ interface PiiCacheEntry {
 
 class PiiDetectionCache {
   private readonly cache = new Map<number, PiiCacheEntry>();
+  private hits = 0;
+  private misses = 0;
 
   get(text: string, language: string): PIIEntity[] | undefined {
     const key = Bun.hash(`${language}\0${text}`) as number;
     const entry = this.cache.get(key);
-    if (!entry) return undefined;
+    if (!entry) {
+      this.misses++;
+      return undefined;
+    }
     if (Date.now() > entry.expiresAt) {
       this.cache.delete(key);
+      this.misses++;
       return undefined;
     }
     // Move to end to maintain LRU order
     this.cache.delete(key);
     this.cache.set(key, entry);
+    this.hits++;
     return entry.entities;
   }
 
@@ -75,6 +82,17 @@ class PiiDetectionCache {
       this.cache.delete(this.cache.keys().next().value as number);
     }
     this.cache.set(key, { entities, expiresAt: Date.now() + PII_CACHE_TTL_MS });
+  }
+
+  getStats(): { hits: number; misses: number; size: number; maxSize: number; hitRate: number } {
+    const total = this.hits + this.misses;
+    return {
+      hits: this.hits,
+      misses: this.misses,
+      size: this.cache.size,
+      maxSize: PII_CACHE_MAX_SIZE,
+      hitRate: total > 0 ? Math.round((this.hits / total) * 1000) / 10 : 0,
+    };
   }
 }
 
@@ -184,6 +202,16 @@ export class PIIDetector {
       languageFallback: langResult.usedFallback,
       detectedLanguage: langResult.detectedLanguage,
     };
+  }
+
+  getCacheStats(): {
+    hits: number;
+    misses: number;
+    size: number;
+    maxSize: number;
+    hitRate: number;
+  } {
+    return this.piiCache.getStats();
   }
 
   async healthCheck(): Promise<boolean> {
