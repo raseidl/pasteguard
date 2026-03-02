@@ -217,95 +217,69 @@ export class Logger {
    * Gets statistics
    */
   getStats(): Stats {
-    // Total requests
-    const totalResult = this.db.prepare(`SELECT COUNT(*) as count FROM request_logs`).get() as {
-      count: number;
+    const mainResult = this.db
+      .prepare(
+        `SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN pii_detected = 1 THEN 1 ELSE 0 END) as pii_count,
+          SUM(CASE WHEN provider IN ('openai', 'anthropic') THEN 1 ELSE 0 END) as proxy_count,
+          SUM(CASE WHEN provider = 'local' THEN 1 ELSE 0 END) as local_count,
+          SUM(CASE WHEN provider = 'api' THEN 1 ELSE 0 END) as api_count,
+          AVG(scan_time_ms) as avg_scan_time,
+          COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) as total_tokens,
+          COALESCE(SUM(prompt_tokens), 0) as total_prompt,
+          COALESCE(SUM(completion_tokens), 0) as total_completion,
+          COALESCE(SUM(cache_read_input_tokens), 0) as total_cache_read,
+          COALESCE(SUM(cache_creation_input_tokens), 0) as total_cache_creation,
+          COUNT(CASE WHEN prompt_tokens IS NOT NULL OR completion_tokens IS NOT NULL THEN 1 END) as token_requests
+        FROM request_logs`,
+      )
+      .get() as {
+      total: number;
+      pii_count: number;
+      proxy_count: number;
+      local_count: number;
+      api_count: number;
+      avg_scan_time: number | null;
+      total_tokens: number;
+      total_prompt: number;
+      total_completion: number;
+      total_cache_read: number;
+      total_cache_creation: number;
+      token_requests: number;
     };
 
-    // PII requests
-    const piiResult = this.db
-      .prepare(`SELECT COUNT(*) as count FROM request_logs WHERE pii_detected = 1`)
-      .get() as { count: number };
-
-    // Proxy (OpenAI + Anthropic) vs Local vs API
-    const proxyResult = this.db
-      .prepare(
-        `SELECT COUNT(*) as count FROM request_logs WHERE provider IN ('openai', 'anthropic')`,
-      )
-      .get() as { count: number };
-    const localResult = this.db
-      .prepare(`SELECT COUNT(*) as count FROM request_logs WHERE provider = 'local'`)
-      .get() as { count: number };
-    const apiResult = this.db
-      .prepare(`SELECT COUNT(*) as count FROM request_logs WHERE provider = 'api'`)
-      .get() as { count: number };
-
-    // Average scan time
-    const scanTimeResult = this.db
-      .prepare(`SELECT AVG(scan_time_ms) as avg FROM request_logs`)
-      .get() as { avg: number | null };
-
-    // Total tokens and breakdown
-    const tokensResult = this.db
-      .prepare(`
-      SELECT
-        COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) as total,
-        COALESCE(SUM(prompt_tokens), 0) as total_prompt,
-        COALESCE(SUM(completion_tokens), 0) as total_completion,
-        COALESCE(SUM(cache_read_input_tokens), 0) as total_cache_read,
-        COALESCE(SUM(cache_creation_input_tokens), 0) as total_cache_creation,
-        COUNT(CASE WHEN prompt_tokens IS NOT NULL OR completion_tokens IS NOT NULL THEN 1 END) as token_requests
-      FROM request_logs
-    `)
-      .get() as {
-        total: number;
-        total_prompt: number;
-        total_completion: number;
-        total_cache_read: number;
-        total_cache_creation: number;
-        token_requests: number;
-      };
-
-    // Requests last hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const hourResult = this.db
-      .prepare(`
-      SELECT COUNT(*) as count FROM request_logs
-      WHERE timestamp >= ?
-    `)
+      .prepare(`SELECT COUNT(*) as count FROM request_logs WHERE timestamp >= ?`)
       .get(oneHourAgo) as { count: number };
 
-    const total = totalResult.count;
-    const pii = piiResult.count;
-
-    const totalPrompt = tokensResult.total_prompt;
-    const cacheRead = tokensResult.total_cache_read;
-    const cacheCreation = tokensResult.total_cache_creation;
-    const tokenRequests = tokensResult.token_requests;
-
-    // Total effective input = new tokens + cache read + cache creation
-    const totalEffectiveInput = totalPrompt + cacheRead + cacheCreation;
+    const total = mainResult.total;
+    const pii = mainResult.pii_count;
+    const cacheRead = mainResult.total_cache_read;
+    const cacheCreation = mainResult.total_cache_creation;
+    const totalEffectiveInput = mainResult.total_prompt + cacheRead + cacheCreation;
 
     return {
       total_requests: total,
       pii_requests: pii,
       pii_percentage: total > 0 ? Math.round((pii / total) * 100 * 10) / 10 : 0,
-      proxy_requests: proxyResult.count,
-      local_requests: localResult.count,
-      api_requests: apiResult.count,
-      avg_scan_time_ms: Math.round(scanTimeResult.avg || 0),
-      total_tokens: tokensResult.total,
+      proxy_requests: mainResult.proxy_count,
+      local_requests: mainResult.local_count,
+      api_requests: mainResult.api_count,
+      avg_scan_time_ms: Math.round(mainResult.avg_scan_time || 0),
+      total_tokens: mainResult.total_tokens,
       requests_last_hour: hourResult.count,
-      total_prompt_tokens: totalPrompt,
-      total_completion_tokens: tokensResult.total_completion,
+      total_prompt_tokens: mainResult.total_prompt,
+      total_completion_tokens: mainResult.total_completion,
       total_cache_read_tokens: cacheRead,
       total_cache_creation_tokens: cacheCreation,
       cache_hit_rate:
-        totalEffectiveInput > 0
-          ? Math.round((cacheRead / totalEffectiveInput) * 100 * 10) / 10
-          : 0,
+        totalEffectiveInput > 0 ? Math.round((cacheRead / totalEffectiveInput) * 100 * 10) / 10 : 0,
       avg_tokens_per_request:
-        tokenRequests > 0 ? Math.round(tokensResult.total / tokenRequests) : 0,
+        mainResult.token_requests > 0
+          ? Math.round(mainResult.total_tokens / mainResult.token_requests)
+          : 0,
     };
   }
 

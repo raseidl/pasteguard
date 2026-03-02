@@ -42,11 +42,48 @@ export interface PIIDetectionResult {
   detectedLanguage?: string;
 }
 
+// LRU cache for PII detection results — avoids redundant Presidio calls for repeated spans
+// (system prompts and earlier conversation turns are re-scanned every request otherwise)
+const PII_CACHE_MAX_SIZE = 1000;
+const PII_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+interface PiiCacheEntry {
+  entities: PIIEntity[];
+  expiresAt: number;
+}
+
+class PiiDetectionCache {
+  private readonly cache = new Map<number, PiiCacheEntry>();
+
+  get(text: string, language: string): PIIEntity[] | undefined {
+    const key = Bun.hash(`${language}\0${text}`) as number;
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    // Move to end to maintain LRU order
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+    return entry.entities;
+  }
+
+  set(text: string, language: string, entities: PIIEntity[]): void {
+    const key = Bun.hash(`${language}\0${text}`) as number;
+    if (this.cache.size >= PII_CACHE_MAX_SIZE && !this.cache.has(key)) {
+      this.cache.delete(this.cache.keys().next().value as number);
+    }
+    this.cache.set(key, { entities, expiresAt: Date.now() + PII_CACHE_TTL_MS });
+  }
+}
+
 export class PIIDetector {
   private presidioUrl: string;
   private scoreThreshold: number;
   private entityTypes: string[];
   private languageValidation?: { available: string[]; missing: string[] };
+  private readonly piiCache = new PiiDetectionCache();
 
   constructor() {
     const config = getConfig();
@@ -56,6 +93,9 @@ export class PIIDetector {
   }
 
   async detectPII(text: string, language: SupportedLanguage): Promise<PIIEntity[]> {
+    const cached = this.piiCache.get(text, language);
+    if (cached) return cached;
+
     const analyzeEndpoint = `${this.presidioUrl}/analyze`;
 
     const request: AnalyzeRequest = {
@@ -82,7 +122,9 @@ export class PIIDetector {
         );
       }
 
-      return (await response.json()) as PIIEntity[];
+      const entities = (await response.json()) as PIIEntity[];
+      this.piiCache.set(text, language, entities);
+      return entities;
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("fetch")) {

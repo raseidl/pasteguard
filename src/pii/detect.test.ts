@@ -187,6 +187,67 @@ describe("PIIDetector", () => {
 
       expect(entities).toHaveLength(0);
     });
+
+    test("returns cached result on second call — Presidio called only once", async () => {
+      let callCount = 0;
+      globalThis.fetch = mock(async (url: string | URL | Request, _init?: RequestInit) => {
+        if (url.toString().includes("/analyze")) {
+          callCount++;
+          return new Response(
+            JSON.stringify([{ entity_type: "EMAIL_ADDRESS", start: 0, end: 16, score: 0.99 }]),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response("OK", { status: 200 });
+      }) as unknown as typeof fetch;
+
+      const detector = new PIIDetector();
+      const first = await detector.detectPII("test@example.com", "en");
+      const second = await detector.detectPII("test@example.com", "en");
+
+      expect(callCount).toBe(1);
+      expect(second).toEqual(first);
+    });
+
+    test("does not share cache across different languages", async () => {
+      let callCount = 0;
+      globalThis.fetch = mock(async (url: string | URL | Request) => {
+        if (url.toString().includes("/analyze")) {
+          callCount++;
+          return new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response("OK", { status: 200 });
+      }) as unknown as typeof fetch;
+
+      const detector = new PIIDetector();
+      await detector.detectPII("Hello world", "en");
+      await detector.detectPII("Hello world", "de");
+
+      expect(callCount).toBe(2);
+    });
+
+    test("does not share cache across different texts", async () => {
+      let callCount = 0;
+      globalThis.fetch = mock(async (url: string | URL | Request) => {
+        if (url.toString().includes("/analyze")) {
+          callCount++;
+          return new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response("OK", { status: 200 });
+      }) as unknown as typeof fetch;
+
+      const detector = new PIIDetector();
+      await detector.detectPII("Hello world", "en");
+      await detector.detectPII("Different text", "en");
+
+      expect(callCount).toBe(2);
+    });
   });
 
   describe("healthCheck", () => {

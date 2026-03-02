@@ -158,7 +158,9 @@ describe("createUnmaskingStream", () => {
       const source = createSSEStream([usageChunk]);
 
       let captured: unknown = null;
-      const onUsage = (tokens: unknown) => { captured = tokens; };
+      const onUsage = (tokens: unknown) => {
+        captured = tokens;
+      };
 
       const stream = createUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
       await consumeStream(stream);
@@ -173,7 +175,9 @@ describe("createUnmaskingStream", () => {
       const source = createSSEStream([contentChunk, usageChunk, doneChunk]);
 
       let captured: unknown = null;
-      const onUsage = (tokens: unknown) => { captured = tokens; };
+      const onUsage = (tokens: unknown) => {
+        captured = tokens;
+      };
 
       const stream = createUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
       const result = await consumeStream(stream);
@@ -188,7 +192,9 @@ describe("createUnmaskingStream", () => {
       const source = createSSEStream([contentChunk, doneChunk]);
 
       let called = false;
-      const onUsage = () => { called = true; };
+      const onUsage = () => {
+        called = true;
+      };
 
       const stream = createUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
       await consumeStream(stream);

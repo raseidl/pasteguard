@@ -284,7 +284,14 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
         c.req.header("User-Agent") || null,
       );
       const onUsage = createTokenUpdateCallback(logId);
-      return respondStreaming(c, result, piiMaskingContext, secretsResult.maskingContext, config.masking, onUsage);
+      return respondStreaming(
+        c,
+        result,
+        piiMaskingContext,
+        secretsResult.maskingContext,
+        config.masking,
+        onUsage,
+      );
     }
 
     const usage = result.response.usage;

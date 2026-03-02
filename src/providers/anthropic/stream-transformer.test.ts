@@ -344,12 +344,25 @@ describe("createAnthropicUnmaskingStream", () => {
       const source = createSSEStream([messageStart]);
 
       let captured: unknown = null;
-      const onUsage = (tokens: unknown) => { captured = tokens; };
+      const onUsage = (tokens: unknown) => {
+        captured = tokens;
+      };
 
-      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      const stream = createAnthropicUnmaskingStream(
+        source,
+        undefined,
+        defaultConfig,
+        undefined,
+        onUsage,
+      );
       await consumeStream(stream);
 
-      expect(captured).toEqual({ promptTokens: 150, completionTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 });
+      expect(captured).toEqual({
+        promptTokens: 150,
+        completionTokens: 0,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+      });
     });
 
     test("extracts output tokens from message_delta", async () => {
@@ -361,9 +374,17 @@ describe("createAnthropicUnmaskingStream", () => {
       const source = createSSEStream([messageDelta]);
 
       let captured: unknown = null;
-      const onUsage = (tokens: unknown) => { captured = tokens; };
+      const onUsage = (tokens: unknown) => {
+        captured = tokens;
+      };
 
-      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      const stream = createAnthropicUnmaskingStream(
+        source,
+        undefined,
+        defaultConfig,
+        undefined,
+        onUsage,
+      );
       await consumeStream(stream);
 
       expect(captured).toEqual({ promptTokens: 0, completionTokens: 75 });
@@ -383,9 +404,17 @@ describe("createAnthropicUnmaskingStream", () => {
       const source = createSSEStream([messageStart, textDelta, messageDelta]);
 
       let captured: unknown = null;
-      const onUsage = (tokens: unknown) => { captured = tokens; };
+      const onUsage = (tokens: unknown) => {
+        captured = tokens;
+      };
 
-      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      const stream = createAnthropicUnmaskingStream(
+        source,
+        undefined,
+        defaultConfig,
+        undefined,
+        onUsage,
+      );
       await consumeStream(stream);
 
       expect(captured).toMatchObject({ promptTokens: 200, completionTokens: 50 });
@@ -406,9 +435,17 @@ describe("createAnthropicUnmaskingStream", () => {
       const source = createSSEStream([messageStart]);
 
       let captured: unknown = null;
-      const onUsage = (tokens: unknown) => { captured = tokens; };
+      const onUsage = (tokens: unknown) => {
+        captured = tokens;
+      };
 
-      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      const stream = createAnthropicUnmaskingStream(
+        source,
+        undefined,
+        defaultConfig,
+        undefined,
+        onUsage,
+      );
       await consumeStream(stream);
 
       expect(captured).toMatchObject({
@@ -423,9 +460,17 @@ describe("createAnthropicUnmaskingStream", () => {
       const source = createSSEStream([ping]);
 
       let called = false;
-      const onUsage = () => { called = true; };
+      const onUsage = () => {
+        called = true;
+      };
 
-      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      const stream = createAnthropicUnmaskingStream(
+        source,
+        undefined,
+        defaultConfig,
+        undefined,
+        onUsage,
+      );
       await consumeStream(stream);
 
       expect(called).toBe(false);
@@ -444,7 +489,13 @@ describe("createAnthropicUnmaskingStream", () => {
       });
       const source = createSSEStream([messageStart, textDelta, messageDelta]);
 
-      const stream = createAnthropicUnmaskingStream(source, undefined, defaultConfig, undefined, () => {});
+      const stream = createAnthropicUnmaskingStream(
+        source,
+        undefined,
+        defaultConfig,
+        undefined,
+        () => {},
+      );
       const result = await consumeStream(stream);
 
       expect(result).toContain("message_start");

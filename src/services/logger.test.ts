@@ -4,9 +4,27 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 mock.module("../config", () => ({
   getConfig: () => ({
     mode: "mask",
-    logging: { database: ":memory:", retention_days: 30, log_content: false, log_masked_content: true },
-    secrets_detection: { enabled: true, log_detected_types: true, action: "mask", entities: [], max_scan_chars: 200000 },
-    pii_detection: { enabled: true, fallback_language: "en", presidio_url: "http://localhost:5002", languages: ["en"], score_threshold: 0.7, entities: [] },
+    logging: {
+      database: ":memory:",
+      retention_days: 30,
+      log_content: false,
+      log_masked_content: true,
+    },
+    secrets_detection: {
+      enabled: true,
+      log_detected_types: true,
+      action: "mask",
+      entities: [],
+      max_scan_chars: 200000,
+    },
+    pii_detection: {
+      enabled: true,
+      fallback_language: "en",
+      presidio_url: "http://localhost:5002",
+      languages: ["en"],
+      score_threshold: 0.7,
+      entities: [],
+    },
     providers: { openai: { base_url: "https://api.openai.com/v1" } },
     masking: { show_markers: false, marker_text: "[protected]", whitelist: [] },
     server: { port: 3000, host: "0.0.0.0" },
@@ -129,8 +147,22 @@ describe("Logger token metrics", () => {
     });
 
     test("sums cache tokens across requests", () => {
-      logger.log(makeEntry({ prompt_tokens: 100, completion_tokens: 20, cache_read_input_tokens: 90000, cache_creation_input_tokens: 10000 }));
-      logger.log(makeEntry({ prompt_tokens: 50, completion_tokens: 10, cache_read_input_tokens: 48000, cache_creation_input_tokens: 2000 }));
+      logger.log(
+        makeEntry({
+          prompt_tokens: 100,
+          completion_tokens: 20,
+          cache_read_input_tokens: 90000,
+          cache_creation_input_tokens: 10000,
+        }),
+      );
+      logger.log(
+        makeEntry({
+          prompt_tokens: 50,
+          completion_tokens: 10,
+          cache_read_input_tokens: 48000,
+          cache_creation_input_tokens: 2000,
+        }),
+      );
 
       const stats = logger.getStats();
       expect(stats.total_cache_read_tokens).toBe(138000);
@@ -140,7 +172,9 @@ describe("Logger token metrics", () => {
     test("computes cache_hit_rate as cache_read / total_effective_input percentage", () => {
       // total effective input = prompt(100) + cache_read(900) + cache_creation(0) = 1000
       // rate = 900 / 1000 = 90%
-      logger.log(makeEntry({ prompt_tokens: 100, completion_tokens: 50, cache_read_input_tokens: 900 }));
+      logger.log(
+        makeEntry({ prompt_tokens: 100, completion_tokens: 50, cache_read_input_tokens: 900 }),
+      );
 
       const stats = logger.getStats();
       expect(stats.cache_hit_rate).toBe(90);
@@ -149,7 +183,14 @@ describe("Logger token metrics", () => {
     test("cache_hit_rate accounts for cache_creation in denominator", () => {
       // total effective input = prompt(50) + cache_read(800) + cache_creation(150) = 1000
       // rate = 800 / 1000 = 80%
-      logger.log(makeEntry({ prompt_tokens: 50, completion_tokens: 20, cache_read_input_tokens: 800, cache_creation_input_tokens: 150 }));
+      logger.log(
+        makeEntry({
+          prompt_tokens: 50,
+          completion_tokens: 20,
+          cache_read_input_tokens: 800,
+          cache_creation_input_tokens: 150,
+        }),
+      );
 
       const stats = logger.getStats();
       expect(stats.cache_hit_rate).toBe(80);
@@ -157,7 +198,7 @@ describe("Logger token metrics", () => {
 
     test("computes avg_tokens_per_request only over requests with token data", () => {
       logger.log(makeEntry({ prompt_tokens: 200, completion_tokens: 100 })); // 300 total
-      logger.log(makeEntry({ prompt_tokens: 100, completion_tokens: 50 }));  // 150 total
+      logger.log(makeEntry({ prompt_tokens: 100, completion_tokens: 50 })); // 150 total
       logger.log(makeEntry({ prompt_tokens: null, completion_tokens: null })); // excluded
 
       const stats = logger.getStats();
@@ -195,7 +236,9 @@ describe("Logger token metrics", () => {
       // Insert 15 historical requests (simulate them as old by using past timestamp)
       const oldTimestamp = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
       for (let i = 0; i < 15; i++) {
-        logger.log(makeEntry({ timestamp: oldTimestamp, prompt_tokens: 100, completion_tokens: 50 }));
+        logger.log(
+          makeEntry({ timestamp: oldTimestamp, prompt_tokens: 100, completion_tokens: 50 }),
+        );
       }
 
       // Insert a recent request with similar token count
@@ -212,7 +255,9 @@ describe("Logger token metrics", () => {
       // Insert 15 historical requests with low token counts
       const oldTimestamp = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
       for (let i = 0; i < 15; i++) {
-        logger.log(makeEntry({ timestamp: oldTimestamp, prompt_tokens: 100, completion_tokens: 50 }));
+        logger.log(
+          makeEntry({ timestamp: oldTimestamp, prompt_tokens: 100, completion_tokens: 50 }),
+        );
       }
 
       // Insert a recent request with very high token count (> 2x rolling avg of 150)

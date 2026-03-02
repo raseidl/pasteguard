@@ -45,7 +45,10 @@ export function createAnthropicUnmaskingStream(
 
           if (done) {
             // Fire token usage callback with accumulated data
-            if (onUsage && (accumulatedTokens.promptTokens > 0 || accumulatedTokens.completionTokens > 0)) {
+            if (
+              onUsage &&
+              (accumulatedTokens.promptTokens > 0 || accumulatedTokens.completionTokens > 0)
+            ) {
               try {
                 onUsage(accumulatedTokens);
               } catch (e) {
@@ -114,7 +117,13 @@ export function createAnthropicUnmaskingStream(
                 const parsed = JSON.parse(data) as {
                   type: string;
                   delta?: { type: string };
-                  message?: { usage?: { input_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } };
+                  message?: {
+                    usage?: {
+                      input_tokens?: number;
+                      cache_creation_input_tokens?: number;
+                      cache_read_input_tokens?: number;
+                    };
+                  };
                   usage?: { output_tokens?: number };
                 };
 
