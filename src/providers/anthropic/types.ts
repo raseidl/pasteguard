@@ -9,47 +9,61 @@ import { z } from "zod";
 // All schemas use .passthrough() to preserve fields PasteGuard doesn't need to inspect
 // (e.g. cache_control, citations). Without this, Zod silently strips unknown fields,
 // breaking features like Anthropic prompt caching.
-export const TextBlockSchema = z.object({
-  type: z.literal("text"),
-  text: z.string(),
-}).passthrough();
+export const TextBlockSchema = z
+  .object({
+    type: z.literal("text"),
+    text: z.string(),
+  })
+  .passthrough();
 
-export const ImageBlockSchema = z.object({
-  type: z.literal("image"),
-  source: z.object({
-    type: z.enum(["base64", "url"]),
-    media_type: z.string().optional(),
-    data: z.string().optional(),
-    url: z.string().optional(),
-  }).passthrough(),
-}).passthrough();
+export const ImageBlockSchema = z
+  .object({
+    type: z.literal("image"),
+    source: z
+      .object({
+        type: z.enum(["base64", "url"]),
+        media_type: z.string().optional(),
+        data: z.string().optional(),
+        url: z.string().optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
-export const ToolUseBlockSchema = z.object({
-  type: z.literal("tool_use"),
-  id: z.string(),
-  name: z.string(),
-  input: z.record(z.unknown()),
-}).passthrough();
+export const ToolUseBlockSchema = z
+  .object({
+    type: z.literal("tool_use"),
+    id: z.string(),
+    name: z.string(),
+    input: z.record(z.unknown()),
+  })
+  .passthrough();
 
-export const ThinkingBlockSchema = z.object({
-  type: z.literal("thinking"),
-  thinking: z.string(),
-  signature: z.string().optional(),
-}).passthrough();
+export const ThinkingBlockSchema = z
+  .object({
+    type: z.literal("thinking"),
+    thinking: z.string(),
+    signature: z.string().optional(),
+  })
+  .passthrough();
 
-export const RedactedThinkingBlockSchema = z.object({
-  type: z.literal("redacted_thinking"),
-  data: z.string(),
-}).passthrough();
+export const RedactedThinkingBlockSchema = z
+  .object({
+    type: z.literal("redacted_thinking"),
+    data: z.string(),
+  })
+  .passthrough();
 
 // ToolResultBlock can contain nested content blocks, so we define it with z.any() for content
 // and provide proper type separately
-export const ToolResultBlockSchema = z.object({
-  type: z.literal("tool_result"),
-  tool_use_id: z.string(),
-  content: z.union([z.string(), z.array(z.any())]),
-  is_error: z.boolean().optional(),
-}).passthrough();
+export const ToolResultBlockSchema = z
+  .object({
+    type: z.literal("tool_result"),
+    tool_use_id: z.string(),
+    content: z.union([z.string(), z.array(z.any())]),
+    is_error: z.boolean().optional(),
+  })
+  .passthrough();
 
 export const ContentBlockSchema = z.discriminatedUnion("type", [
   TextBlockSchema,
@@ -61,20 +75,26 @@ export const ContentBlockSchema = z.discriminatedUnion("type", [
 ]);
 
 // Message and request types
-export const AnthropicMessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  content: z.union([z.string(), z.array(ContentBlockSchema)]),
-}).passthrough();
+export const AnthropicMessageSchema = z
+  .object({
+    role: z.enum(["user", "assistant"]),
+    content: z.union([z.string(), z.array(ContentBlockSchema)]),
+  })
+  .passthrough();
 
-export const ToolSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  input_schema: z.object({
-    type: z.literal("object"),
-    properties: z.record(z.unknown()).optional(),
-    required: z.array(z.string()).optional(),
-  }).passthrough(),
-}).passthrough();
+export const ToolSchema = z
+  .object({
+    name: z.string(),
+    description: z.string().optional(),
+    input_schema: z
+      .object({
+        type: z.literal("object"),
+        properties: z.record(z.unknown()).optional(),
+        required: z.array(z.string()).optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
 export const AnthropicRequestSchema = z
   .object({

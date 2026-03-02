@@ -6,16 +6,21 @@
 import { z } from "zod";
 
 // Content part for multimodal messages
-export const OpenAIContentPartSchema = z.object({
-  type: z.string(),
-  text: z.string().optional(),
-  image_url: z
-    .object({
-      url: z.string(),
-      detail: z.string().optional(),
-    })
-    .optional(),
-});
+// All schemas use .passthrough() to preserve fields PasteGuard doesn't need to inspect
+// (e.g. input_audio, file). Without this, Zod silently strips unknown fields.
+export const OpenAIContentPartSchema = z
+  .object({
+    type: z.string(),
+    text: z.string().optional(),
+    image_url: z
+      .object({
+        url: z.string(),
+        detail: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
 
 // Message content: string, array (multimodal), or null
 export const OpenAIMessageContentSchema = z.union([
@@ -25,10 +30,12 @@ export const OpenAIMessageContentSchema = z.union([
 ]);
 
 // Chat message
-export const OpenAIMessageSchema = z.object({
-  role: z.enum(["system", "developer", "user", "assistant", "tool", "function"]),
-  content: OpenAIMessageContentSchema.optional(),
-});
+export const OpenAIMessageSchema = z
+  .object({
+    role: z.enum(["system", "developer", "user", "assistant", "tool", "function"]),
+    content: OpenAIMessageContentSchema.optional(),
+  })
+  .passthrough();
 
 // Chat completion request - minimal required fields, rest passthrough
 export const OpenAIRequestSchema = z

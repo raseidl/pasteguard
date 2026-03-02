@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+import { OpenAIRequestSchema } from "../providers/openai/types";
 import { openaiRoutes } from "./openai";
 
 const app = new Hono();
@@ -41,5 +42,78 @@ describe("POST /openai/v1/chat/completions", () => {
     });
 
     expect(res.status).toBe(400);
+  });
+});
+
+describe("Zod schema preserves unknown fields", () => {
+  const base = {
+    model: "gpt-4o",
+    messages: [{ role: "user", content: "Hello" }],
+  };
+
+  test("preserves name field on message", () => {
+    const input = {
+      ...base,
+      messages: [{ role: "user", content: "Hello", name: "test_user" }],
+    };
+
+    const result = OpenAIRequestSchema.parse(input);
+
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+    expect((result.messages[0] as any).name).toBe("test_user");
+  });
+
+  test("preserves tool_calls on assistant message", () => {
+    const input = {
+      ...base,
+      messages: [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_123",
+              type: "function",
+              function: { name: "get_weather", arguments: "{}" },
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = OpenAIRequestSchema.parse(input);
+
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+    expect((result.messages[0] as any).tool_calls).toHaveLength(1);
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+    expect((result.messages[0] as any).tool_calls[0].id).toBe("call_123");
+  });
+
+  test("preserves audio content part fields", () => {
+    const input = {
+      ...base,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "input_audio", input_audio: { data: "base64...", format: "wav" } }],
+        },
+      ],
+    };
+
+    const result = OpenAIRequestSchema.parse(input);
+
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+    const part = (result.messages[0].content as any[])[0];
+    expect(part.type).toBe("input_audio");
+    expect(part.input_audio.format).toBe("wav");
+  });
+
+  test("preserves unknown top-level fields", () => {
+    const input = { ...base, custom_field: "preserved" };
+
+    const result = OpenAIRequestSchema.parse(input);
+
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
+    expect((result as any).custom_field).toBe("preserved");
   });
 });

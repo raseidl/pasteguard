@@ -89,6 +89,7 @@ describe("Zod schema preserves cache_control and unknown fields", () => {
     };
 
     const result = AnthropicRequestSchema.parse(input);
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
     const block = (result.messages[0].content as any[])[0];
 
     expect(block.cache_control).toEqual({ type: "ephemeral" });
@@ -101,6 +102,7 @@ describe("Zod schema preserves cache_control and unknown fields", () => {
     };
 
     const result = AnthropicRequestSchema.parse(input);
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
     const block = (result.system as any[])[0];
 
     expect(block.cache_control).toEqual({ type: "ephemeral" });
@@ -121,6 +123,7 @@ describe("Zod schema preserves cache_control and unknown fields", () => {
 
     const result = AnthropicRequestSchema.parse(input);
 
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
     expect((result.tools![0] as any).cache_control).toEqual({ type: "ephemeral" });
   });
 
@@ -132,6 +135,7 @@ describe("Zod schema preserves cache_control and unknown fields", () => {
 
     const result = AnthropicRequestSchema.parse(input);
 
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
     expect((result.messages[0] as any).cache_control).toEqual({ type: "ephemeral" });
   });
 
@@ -140,6 +144,7 @@ describe("Zod schema preserves cache_control and unknown fields", () => {
 
     const result = AnthropicRequestSchema.parse(input);
 
+    // biome-ignore lint/suspicious/noExplicitAny: testing unknown field preservation
     expect((result as any).custom_field).toBe("preserved");
   });
 });
