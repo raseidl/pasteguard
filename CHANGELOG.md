@@ -7,15 +7,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — v0.3.2-fork.3
+## [v0.3.2-fork.2.2] — 2026-03-04
 
 ### Added
 - **Token metrics on dashboard** — input tokens, output tokens, total tokens, cache hit rate, and token anomaly detection (alert when last-hour average exceeds 2× 7-day rolling avg). Tokens are captured from streaming and non-streaming responses for both OpenAI and Anthropic.
 - **Metric tooltips** — info icon on every dashboard stat card shows a short explanation on hover.
+- **Dashboard diagnostics** — activity pill shows per-phase request breakdown (scanning / provider / streaming); health pills warn on recent 502/503 errors; recent error list between Charts and Logs sections.
+- **Configurable provider timeout** — new `server.provider_timeout_ms` config option (default 60 s, down from 120 s) to surface upstream hangs faster.
+- **Request phase tracking** — active requests are now tracked with lifecycle phases (`scanning → provider → streaming`) for real-time visibility into where latency occurs.
 - **Docker Compose setup docs** in README (production, development, EU languages, custom language builds).
+- **Test coverage** — new test files for `active-requests`, `route utils`, `logger.getRecentErrors`, and OpenAI stream `cached_tokens` normalization (482 tests, 0 failures).
 
 ### Fixed
-- **Masked content not logged when secrets detected** — `log_masked_content` config option was never checked by the OpenAI and Anthropic routes. Additionally, an overly broad guard (`!data.secretsDetected`) suppressed dashboard content previews whenever any secret was found — even though `maskedContent` is already fully masked (secrets and PII replaced with placeholders before it is set). The guard protected SQLite storage but not the outbound API call, making it a false safety boundary. Removed the guard and wired up the config option so `log_masked_content: true/false` controls dashboard previews as documented.
+- **Masked content not logged when secrets detected** — `log_masked_content` config option was never checked by the OpenAI and Anthropic routes. Additionally, an overly broad guard (`!data.secretsDetected`) suppressed dashboard content previews whenever any secret was found — even though `maskedContent` is already fully masked (secrets and PII replaced with placeholders before it is set). Removed the guard and wired up the config option so `log_masked_content: true/false` controls dashboard previews as documented.
+- **CI pipeline on main** — resolved all Biome lint errors (unused imports, import ordering, assignment-in-expression, literal key style) and a mock leak in `api.test.ts` that caused `health.test.ts` to fail; the full `typecheck → check → test` pipeline now passes on every push to main.
 
 ### Changed
 - **Docker Compose images** — switched from upstream `ghcr.io/sgasser/pasteguard` to fork `ghcr.io/raseidl/pasteguard`.
