@@ -103,11 +103,15 @@ export function createUnmaskingStream(
               try {
                 const parsed = JSON.parse(data);
 
-                // Capture token usage from final usage chunk
+                // Capture token usage from final usage chunk.
+                // cached_tokens is a subset of prompt_tokens (not additive like Anthropic),
+                // so subtract it to store only the non-cached portion.
                 if (onUsage && parsed.usage) {
+                  const cachedTokens = parsed.usage.prompt_tokens_details?.cached_tokens ?? 0;
                   capturedUsage = {
-                    promptTokens: parsed.usage.prompt_tokens ?? 0,
+                    promptTokens: (parsed.usage.prompt_tokens ?? 0) - cachedTokens,
                     completionTokens: parsed.usage.completion_tokens ?? 0,
+                    ...(cachedTokens > 0 ? { cacheReadInputTokens: cachedTokens } : {}),
                   };
                 }
 

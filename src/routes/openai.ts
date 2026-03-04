@@ -34,6 +34,7 @@ import {
   type OpenAIResponse,
 } from "../providers/openai/types";
 import { unmaskSecretsResponse } from "../secrets/mask";
+import { incrementActive } from "../services/active-requests";
 import { logRequest } from "../services/logger";
 import { detectPII, maskPII, type PIIDetectResult } from "../services/pii";
 import { processSecretsRequest, type SecretsProcessResult } from "../services/secrets";
@@ -72,6 +73,7 @@ openaiRoutes.post(
   }),
   async (c) => {
     const startTime = Date.now();
+    incrementActive();
     let request = c.req.valid("json") as OpenAIRequest;
     const config = getConfig();
 
@@ -268,8 +270,10 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
     toSecretsHeaderData(secretsResult),
   );
 
+  const providerStart = Date.now();
   try {
     const result = await callOpenAI(request, config.providers.openai, authHeader);
+    const providerCallMs = Date.now() - providerStart;
 
     if (result.isStreaming) {
       const logId = logRequest(
@@ -277,6 +281,7 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
           provider: "openai",
           model: result.model || originalRequest.model || "unknown",
           startTime,
+          providerCallMs,
           pii: toPIILogData(piiResult),
           secrets: toSecretsLogData(secretsResult),
           maskedContent,
@@ -295,16 +300,22 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
     }
 
     const usage = result.response.usage;
+    // cached_tokens is a subset of prompt_tokens (not additive like Anthropic).
+    // Subtract it so prompt_tokens stores only the non-cached portion, matching
+    // Anthropic semantics and keeping the cache_hit_rate formula correct.
+    const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
     logRequest(
       createLogData({
         provider: "openai",
         model: result.model || originalRequest.model || "unknown",
         startTime,
+        providerCallMs,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
         maskedContent,
-        promptTokens: usage?.prompt_tokens,
+        promptTokens: usage ? usage.prompt_tokens - cachedTokens : undefined,
         completionTokens: usage?.completion_tokens,
+        ...(cachedTokens > 0 ? { cacheReadInputTokens: cachedTokens } : {}),
       }),
       c.req.header("User-Agent") || null,
     );
@@ -353,14 +364,17 @@ async function sendToLocal(c: Context, originalRequest: OpenAIRequest, opts: Loc
     toSecretsHeaderData(secretsResult),
   );
 
+  const providerStart = Date.now();
   try {
     const result = await callLocal(request, config.local);
+    const providerCallMs = Date.now() - providerStart;
 
     logRequest(
       createLogData({
         provider: "local",
         model: result.model || originalRequest.model || "unknown",
         startTime,
+        providerCallMs,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
         maskedContent,

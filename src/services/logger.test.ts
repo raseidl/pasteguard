@@ -46,6 +46,7 @@ function makeEntry(overrides: Partial<Parameters<InstanceType<typeof Logger>["lo
     entities: "",
     latency_ms: 100,
     scan_time_ms: 10,
+    provider_call_ms: 0,
     prompt_tokens: null,
     completion_tokens: null,
     cache_creation_input_tokens: null,

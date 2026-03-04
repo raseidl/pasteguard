@@ -210,6 +210,7 @@ export interface CreateLogDataOptions {
   provider: "openai" | "anthropic" | "copilot" | "local" | "api";
   model: string;
   startTime: number;
+  providerCallMs?: number;
   pii?: PIILogData;
   secrets?: SecretsLogData;
   maskedContent?: string;
@@ -230,6 +231,7 @@ export function createLogData(options: CreateLogDataOptions): RequestLogData {
     provider,
     model,
     startTime,
+    providerCallMs,
     pii,
     secrets,
     maskedContent,
@@ -250,6 +252,7 @@ export function createLogData(options: CreateLogDataOptions): RequestLogData {
     entities: pii?.entityTypes ?? [],
     latencyMs: Date.now() - startTime,
     scanTimeMs: pii?.scanTimeMs ?? 0,
+    providerCallMs: providerCallMs ?? 0,
     language: pii?.language ?? config.pii_detection.fallback_language,
     languageFallback: pii?.languageFallback ?? false,
     detectedLanguage: pii?.detectedLanguage,

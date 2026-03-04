@@ -230,7 +230,9 @@ const DashboardPage: FC = () => {
 								line-height: 1.5;
 								padding: 6px 10px;
 								border-radius: var(--radius-sm);
-								white-space: nowrap;
+								white-space: normal;
+								max-width: 220px;
+								width: max-content;
 								z-index: 50;
 								box-shadow: var(--shadow-md);
 								pointer-events: none;
@@ -247,6 +249,17 @@ const DashboardPage: FC = () => {
 							.stat-info:hover .stat-tooltip {
 								display: block;
 							}
+							/* Flip tooltip below when near the top of the viewport */
+							.stat-info.tooltip-below .stat-tooltip {
+								bottom: auto;
+								top: calc(100% + 6px);
+							}
+							.stat-info.tooltip-below .stat-tooltip::after {
+								top: auto;
+								bottom: 100%;
+								border-top-color: transparent;
+								border-bottom-color: var(--color-code-bg);
+							}
 						`,
 					}}
 				/>
@@ -255,8 +268,8 @@ const DashboardPage: FC = () => {
 				<div class="max-w-[1320px] mx-auto p-8 px-6">
 					<Header />
 					<StatsGrid />
-					<TokenStatsGrid />
-					<PiiCacheGrid />
+					<LatencyBreakdown />
+					<CacheAndTokenGrid />
 					<TokenAnomalyBanner />
 					<Charts />
 					<LogsSection />
@@ -287,9 +300,15 @@ const Header: FC = () => (
 			>
 				—
 			</span>
-			<div class="flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full text-xs text-text-secondary shadow-sm">
-				<div class="w-[7px] h-[7px] bg-success rounded-full animate-pulse-dot" />
-				<span>Live</span>
+			<div id="error-pill" class="hidden items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-error border border-error/20 bg-error/10 shadow-sm">
+				<svg viewBox="0 0 12 12" fill="currentColor" class="w-[10px] h-[10px] shrink-0">
+					<path d="M6 1a.5.5 0 0 1 .447.276l4.5 9A.5.5 0 0 1 10.5 11h-9a.5.5 0 0 1-.447-.724l4.5-9A.5.5 0 0 1 6 1zm0 4a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 1 0v-2A.5.5 0 0 0 6 5zm0 5a.75.75 0 1 0 0-1.5A.75.75 0 0 0 6 10z"/>
+				</svg>
+				<span id="error-pill-label">0 errors</span>
+			</div>
+			<div id="activity-pill" class="flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full text-xs text-text-secondary shadow-sm">
+				<div id="activity-dot" class="w-[7px] h-[7px] bg-success rounded-full animate-pulse-dot" />
+				<span id="activity-label">Live</span>
 			</div>
 		</div>
 	</header>
@@ -380,30 +399,172 @@ const StatCard: FC<{
 	);
 };
 
-const TokenStatsGrid: FC = () => (
-	<div id="token-stats-grid" class="grid grid-cols-4 gap-4 mb-4">
-		<StatCard label="Total Tokens" valueId="total-tokens" tooltip="Sum of all input and output tokens across requests" />
-		<StatCard label="Input Tokens" valueId="total-prompt-tokens" accent="info" tooltip="Total prompt/input tokens sent to providers" />
-		<StatCard label="Output Tokens" valueId="total-completion-tokens" accent="teal" tooltip="Total completion/output tokens received from providers" />
-		<StatCard label="Cache Hit Rate" valueId="cache-hit-rate" accent="success" tooltip="Percentage of input tokens served from cache (Anthropic)" />
+const SpeedometerGauge: FC<{
+	id: string;
+	label: string;
+	colorVar: string;
+	maxLabel: string;
+	tooltip?: string;
+}> = ({ id, label, colorVar, maxLabel, tooltip }) => (
+	// r=55  →  semiCirc = π×55 ≈ 172.788  fullCirc ≈ 345.575
+	// rotate(-180) starts the stroke at 9-o'clock (left) so it sweeps left→top→right
+	// needle x2=34 = cx(80) - needleLen(46), pointing left at 0 %
+	<div class="flex flex-col items-center gap-2">
+		<svg viewBox="0 0 160 100" class="w-full max-w-[200px]">
+			{/* Background track */}
+			<circle
+				cx="80"
+				cy="80"
+				r="55"
+				fill="none"
+				stroke="var(--color-bg-elevated)"
+				stroke-width="10"
+				stroke-linecap="round"
+				stroke-dasharray="172.788 345.575"
+				transform="rotate(-180 80 80)"
+			/>
+			{/* Value arc — driven by strokeDashoffset via JS */}
+			<circle
+				id={`${id}-arc`}
+				cx="80"
+				cy="80"
+				r="55"
+				fill="none"
+				stroke={`var(${colorVar})`}
+				stroke-width="10"
+				stroke-linecap="round"
+				stroke-dasharray="172.788 345.575"
+				transform="rotate(-180 80 80)"
+				style="stroke-dashoffset: 172.788; transition: stroke-dashoffset 0.45s ease"
+			/>
+			{/* Needle — rotated clockwise via CSS transform */}
+			<line
+				id={`${id}-needle`}
+				x1="80"
+				y1="80"
+				x2="34"
+				y2="80"
+				stroke="var(--color-text-secondary)"
+				stroke-width="2"
+				stroke-linecap="round"
+				style="transform-box: view-box; transform-origin: 80px 80px; transition: transform 0.45s ease"
+			/>
+			{/* Hub */}
+			<circle cx="80" cy="80" r="5" fill="var(--color-text-secondary)" />
+			<circle cx="80" cy="80" r="2.5" fill="var(--color-bg-surface)" />
+			{/* Value */}
+			<text
+				id={`${id}-value`}
+				x="80"
+				y="63"
+				text-anchor="middle"
+				font-size="16"
+				font-weight="700"
+				font-family="ui-monospace, SFMono-Regular, monospace"
+				fill="var(--color-text-primary)"
+			>
+				—
+			</text>
+			{/* Scale end-labels */}
+			<text
+				x="20"
+				y="95"
+				text-anchor="middle"
+				font-size="8"
+				font-family="ui-monospace, SFMono-Regular, monospace"
+				fill="var(--color-text-subtle)"
+			>
+				0
+			</text>
+			<text
+				x="140"
+				y="95"
+				text-anchor="middle"
+				font-size="8"
+				font-family="ui-monospace, SFMono-Regular, monospace"
+				fill="var(--color-text-subtle)"
+			>
+				{maxLabel}
+			</text>
+		</svg>
+		<div class="text-[0.7rem] font-medium uppercase tracking-widest text-text-muted -mt-1 flex items-center justify-center gap-0.5">
+			{label}
+			{tooltip && (
+				<span class="stat-info">
+					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+						<circle cx="8" cy="8" r="6.5" />
+						<path d="M8 11V7.5M8 5.5v-.01" stroke-linecap="round" />
+					</svg>
+					<span class="stat-tooltip">{tooltip}</span>
+				</span>
+			)}
+		</div>
 	</div>
 );
 
-const PiiCacheGrid: FC = () => (
-	<div class="mb-4">
-		<div class="grid grid-cols-2 gap-4" style="max-width: calc(50% - 8px)">
-			<StatCard
-				label="PII Cache Hit Rate"
-				valueId="pii-cache-hit-rate"
-				accent="teal"
-				tooltip="% of Presidio scan calls served from in-memory cache (higher = fewer HTTP round-trips)"
+const LatencyBreakdown: FC = () => (
+	<div class="mb-8 bg-surface border border-border-subtle rounded-xl p-6 shadow-sm animate-fade-in">
+		<div class="flex items-center justify-between mb-4">
+			<div class="text-[0.8rem] font-semibold text-text-secondary uppercase tracking-wide">
+				Latency Breakdown
+			</div>
+			<div class="flex items-center gap-2 text-[0.7rem] text-text-muted">
+				<span>Avg Total</span>
+				<span id="latency-total" class="font-mono font-bold text-text-primary">—</span>
+				<span class="stat-info">
+					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+						<circle cx="8" cy="8" r="6.5" />
+						<path d="M8 11V7.5M8 5.5v-.01" stroke-linecap="round" />
+					</svg>
+					<span class="stat-tooltip">End-to-end latency per request: PII scan + provider call + overhead. For streaming, measured to first token received.</span>
+				</span>
+			</div>
+		</div>
+		<div class="grid grid-cols-3 gap-6">
+			<SpeedometerGauge
+				id="gauge-scan"
+				label="Avg PII Scan"
+				colorVar="--color-teal"
+				maxLabel="1s"
+				tooltip="Time spent calling Presidio to detect PII entities. Cached results skip this entirely. High values usually mean Presidio is cold or the payload is large."
 			/>
-			<StatCard
-				label="PII Cache Size"
-				valueId="pii-cache-size"
-				tooltip="Active entries in the in-memory PII cache (max 1,000, TTL 1h)"
+			<SpeedometerGauge
+				id="gauge-provider"
+				label="Avg Provider"
+				colorVar="--color-info"
+				maxLabel="15s"
+				tooltip="Round-trip to the upstream LLM (OpenAI, Anthropic, etc.) — from sending the masked request to receiving the first byte back. Network and model latency only."
+			/>
+			<SpeedometerGauge
+				id="gauge-overhead"
+				label="Overhead"
+				colorVar="--color-accent"
+				maxLabel="1s"
+				tooltip="Remaining time after PII scan and provider call: request parsing, PII masking, placeholder substitution, and response serialization. Should stay well under 50 ms."
 			/>
 		</div>
+	</div>
+);
+
+const CacheAndTokenGrid: FC = () => (
+	<div class="grid grid-cols-3 gap-4 mb-4">
+		<StatCard
+			label="Avg Tokens/Request"
+			valueId="avg-tokens-request"
+			tooltip="Average total tokens (input + output) per request"
+		/>
+		<StatCard
+			label="Provider Cache Hit Rate"
+			valueId="cache-hit-rate"
+			accent="success"
+			tooltip="Percentage of input tokens served from the provider's prompt cache (Anthropic, OpenAI, Gemini)"
+		/>
+		<StatCard
+			label="PII Cache Hit Rate"
+			valueId="pii-cache-hit-rate"
+			accent="teal"
+			tooltip="% of Presidio scan calls served from in-memory cache (higher = fewer HTTP round-trips)"
+		/>
 	</div>
 );
 
@@ -539,6 +700,40 @@ const ClientScript: FC = () => (
 let currentMode = null;
 let expandedRowId = null;
 
+// Speedometer gauge updater — stroke-dasharray / stroke-dashoffset technique.
+// Avoids all arc-path gotchas (degenerate zero-length arcs, large-arc toggling).
+// semiCirc = π × r = π × 55 ≈ 172.788  (matches SVG r="55" in SpeedometerGauge)
+const GAUGE_SEMI = Math.PI * 55;
+
+// Optional colorFn(pct) → CSS color string. When provided, overrides the static
+// SVG stroke attribute so the arc color can react to the current value.
+function updateGauge(id, valueMs, maxMs, colorFn) {
+  const arcEl = document.getElementById(id + '-arc');
+  const needleEl = document.getElementById(id + '-needle');
+  const valueEl = document.getElementById(id + '-value');
+  if (!arcEl) return;
+  if (!valueMs || valueMs <= 0) {
+    arcEl.style.strokeDashoffset = GAUGE_SEMI;
+    arcEl.style.stroke = '';   // fall back to SVG presentation attribute
+    needleEl.style.transform = 'rotate(0deg)';
+    valueEl.textContent = '—';
+    return;
+  }
+  const pct = Math.min(1, valueMs / maxMs);
+  // offset=0 → full arc; offset=GAUGE_SEMI → empty arc
+  arcEl.style.strokeDashoffset = GAUGE_SEMI * (1 - pct);
+  if (colorFn) arcEl.style.stroke = colorFn(pct);
+  // needle: 0° = left (0%), 180° = right (100%)
+  needleEl.style.transform = 'rotate(' + (pct * 180).toFixed(1) + 'deg)';
+  valueEl.textContent = valueMs + 'ms';
+}
+
+// Heat color for latency gauges: green (fast) → yellow → red (slow)
+// Hue sweeps 120° → 0° as pct goes 0 → 1; scale-agnostic (pct is already normalised)
+function heatColor(pct) {
+  return 'hsl(' + Math.round(120 * (1 - pct)) + ', 72%, 40%)';
+}
+
 async function fetchStats() {
   try {
     const res = await fetch('/dashboard/api/stats');
@@ -559,6 +754,39 @@ async function fetchStats() {
     modeBadge.className = data.mode === 'route'
       ? 'inline-flex items-center px-3 py-1.5 rounded-md font-mono text-[0.7rem] font-medium tracking-wide uppercase bg-success/10 text-success border border-success/20'
       : 'inline-flex items-center px-3 py-1.5 rounded-md font-mono text-[0.7rem] font-medium tracking-wide uppercase bg-accent/10 text-accent border border-accent/20';
+
+    // Activity indicator: goes amber when requests are in flight
+    const active = data.active_requests || 0;
+    const actDot = document.getElementById('activity-dot');
+    const actLabel = document.getElementById('activity-label');
+    const actPill = document.getElementById('activity-pill');
+    if (active > 0) {
+      actDot.style.background = 'var(--color-accent)';
+      const secs = Math.floor((data.oldest_active_ms || 0) / 1000);
+      const age = secs >= 60
+        ? Math.floor(secs / 60) + 'm ' + (secs % 60) + 's'
+        : secs + 's';
+      actLabel.textContent = active + ' active (' + age + ')';
+      actPill.style.color = 'var(--color-accent)';
+      actPill.style.borderColor = 'rgba(180, 83, 9, 0.3)';
+      actPill.style.background = 'rgba(180, 83, 9, 0.06)';
+    } else {
+      actDot.style.background = '';
+      actLabel.textContent = 'Live';
+      actPill.style.color = '';
+      actPill.style.borderColor = '';
+      actPill.style.background = '';
+    }
+
+    // Error pill: visible only when there are errors in the last hour
+    const errorPill = document.getElementById('error-pill');
+    const errors = data.errors_last_hour || 0;
+    if (errors > 0) {
+      document.getElementById('error-pill-label').textContent = errors + ' error' + (errors === 1 ? '' : 's') + ' (1h)';
+      errorPill.style.display = 'flex';
+    } else {
+      errorPill.style.display = '';
+    }
 
     const piiLabel = document.getElementById('pii-label');
     if (data.mode === 'mask') {
@@ -598,17 +826,25 @@ async function fetchStats() {
       chartEl.innerHTML = '<div class="flex flex-col items-center py-10 gap-3"><div class="loader-bars" style="opacity:0.3"><div class="loader-bar" style="animation:none"></div><div class="loader-bar" style="animation:none"></div><div class="loader-bar" style="animation:none"></div></div><div class="text-sm text-text-muted">No PII detected yet</div></div>';
     }
 
-    // PII cache stats
+    // Latency breakdown gauges
+    // Scales: PII scan ≤ 1s, provider ≤ 15s, overhead ≤ 500ms
+    const totalMs = data.avg_latency_ms || 0;
+    const providerMs = data.avg_provider_call_ms || 0;
+    const scanMs = data.avg_scan_time_ms || 0;
+    const overheadMs = Math.max(0, totalMs - providerMs - scanMs);
+    document.getElementById('latency-total').textContent = totalMs > 0 ? totalMs + 'ms' : '—';
+    updateGauge('gauge-scan', scanMs, 1000, heatColor);
+    updateGauge('gauge-provider', providerMs, 15000, heatColor);
+    updateGauge('gauge-overhead', overheadMs, 1000, heatColor);
+
+    // Cache and token stats
+    const totalReqs = data.total_requests || 1;
+    const avgTokens = Math.round((data.total_tokens || 0) / Math.max(1, totalReqs));
+    document.getElementById('avg-tokens-request').textContent = avgTokens > 0 ? avgTokens.toLocaleString() : '—';
+    document.getElementById('cache-hit-rate').textContent = (data.cache_hit_rate || 0).toFixed(1) + '%';
     if (data.pii_cache) {
       document.getElementById('pii-cache-hit-rate').textContent = data.pii_cache.hitRate.toFixed(1) + '%';
-      document.getElementById('pii-cache-size').textContent = data.pii_cache.size + ' / ' + data.pii_cache.maxSize;
     }
-
-    // Token stats
-    document.getElementById('total-tokens').textContent = (data.total_tokens || 0).toLocaleString();
-    document.getElementById('total-prompt-tokens').textContent = (data.total_prompt_tokens || 0).toLocaleString();
-    document.getElementById('total-completion-tokens').textContent = (data.total_completion_tokens || 0).toLocaleString();
-    document.getElementById('cache-hit-rate').textContent = (data.cache_hit_rate || 0).toFixed(1) + '%';
 
     // Token anomaly banner
     const anomalyBanner = document.getElementById('token-anomaly-banner');
@@ -779,6 +1015,14 @@ async function fetchLogs() {
 fetchStats();
 fetchLogs();
 setInterval(() => { fetchStats(); fetchLogs(); }, 5000);
+
+    // Auto-flip tooltips that would overflow the top of the viewport
+    document.addEventListener('mouseover', function(e) {
+      var info = e.target.closest('.stat-info');
+      if (!info) return;
+      var infoRect = info.getBoundingClientRect();
+      info.classList.toggle('tooltip-below', infoRect.top < 180);
+    });
 			`,
 		}}
 	/>

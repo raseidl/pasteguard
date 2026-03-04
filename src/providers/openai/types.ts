@@ -64,7 +64,16 @@ export const OpenAIResponseSchema = z.object({
       prompt_tokens: z.number(),
       completion_tokens: z.number(),
       total_tokens: z.number(),
+      // Prompt caching details (OpenAI, Gemini via OpenAI-compatible API)
+      // cached_tokens is a subset of prompt_tokens, not additive
+      prompt_tokens_details: z
+        .object({
+          cached_tokens: z.number().optional(),
+        })
+        .passthrough()
+        .optional(),
     })
+    .passthrough()
     .optional(),
 });
 

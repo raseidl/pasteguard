@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { getConfig } from "../config";
+import { decrementActive } from "./active-requests";
 
 export interface RequestLog {
   id?: number;
@@ -12,6 +13,7 @@ export interface RequestLog {
   entities: string;
   latency_ms: number;
   scan_time_ms: number;
+  provider_call_ms: number;
   prompt_tokens: number | null;
   completion_tokens: number | null;
   cache_creation_input_tokens: number | null;
@@ -56,7 +58,9 @@ export interface Stats {
   proxy_requests: number;
   local_requests: number;
   api_requests: number;
+  avg_latency_ms: number;
   avg_scan_time_ms: number;
+  avg_provider_call_ms: number;
   total_tokens: number;
   requests_last_hour: number;
   total_prompt_tokens: number;
@@ -65,6 +69,7 @@ export interface Stats {
   total_cache_creation_tokens: number;
   cache_hit_rate: number;
   avg_tokens_per_request: number;
+  errors_last_hour: number;
 }
 
 /**
@@ -90,9 +95,9 @@ export class Logger {
     this.initializeDatabase();
     this.insertStmt = this.db.prepare(`
       INSERT INTO request_logs
-        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, prompt_tokens, completion_tokens, cache_creation_input_tokens, cache_read_input_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types, status_code, error_message)
+        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, provider_call_ms, prompt_tokens, completion_tokens, cache_creation_input_tokens, cache_read_input_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types, status_code, error_message)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
   }
 
@@ -113,6 +118,7 @@ export class Logger {
         entities TEXT,
         latency_ms INTEGER NOT NULL,
         scan_time_ms INTEGER NOT NULL DEFAULT 0,
+        provider_call_ms INTEGER NOT NULL DEFAULT 0,
         prompt_tokens INTEGER,
         completion_tokens INTEGER,
         user_agent TEXT,
@@ -142,6 +148,11 @@ export class Logger {
       this.db.run("ALTER TABLE request_logs ADD COLUMN cache_creation_input_tokens INTEGER");
       this.db.run("ALTER TABLE request_logs ADD COLUMN cache_read_input_tokens INTEGER");
     }
+    if (!columns.find((c) => c.name === "provider_call_ms")) {
+      this.db.run(
+        "ALTER TABLE request_logs ADD COLUMN provider_call_ms INTEGER NOT NULL DEFAULT 0",
+      );
+    }
 
     // Create indexes for performance
     this.db.run(`
@@ -165,6 +176,7 @@ export class Logger {
       entry.entities,
       entry.latency_ms,
       entry.scan_time_ms,
+      entry.provider_call_ms,
       entry.prompt_tokens,
       entry.completion_tokens,
       entry.cache_creation_input_tokens ?? null,
@@ -225,7 +237,9 @@ export class Logger {
           SUM(CASE WHEN provider IN ('openai', 'anthropic') THEN 1 ELSE 0 END) as proxy_count,
           SUM(CASE WHEN provider = 'local' THEN 1 ELSE 0 END) as local_count,
           SUM(CASE WHEN provider = 'api' THEN 1 ELSE 0 END) as api_count,
+          AVG(latency_ms) as avg_latency,
           AVG(scan_time_ms) as avg_scan_time,
+          AVG(NULLIF(provider_call_ms, 0)) as avg_provider_call,
           COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) as total_tokens,
           COALESCE(SUM(prompt_tokens), 0) as total_prompt,
           COALESCE(SUM(completion_tokens), 0) as total_completion,
@@ -240,7 +254,9 @@ export class Logger {
       proxy_count: number;
       local_count: number;
       api_count: number;
+      avg_latency: number | null;
       avg_scan_time: number | null;
+      avg_provider_call: number | null;
       total_tokens: number;
       total_prompt: number;
       total_completion: number;
@@ -251,8 +267,13 @@ export class Logger {
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const hourResult = this.db
-      .prepare(`SELECT COUNT(*) as count FROM request_logs WHERE timestamp >= ?`)
-      .get(oneHourAgo) as { count: number };
+      .prepare(
+        `SELECT
+          COUNT(*) as count,
+          SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count
+        FROM request_logs WHERE timestamp >= ?`,
+      )
+      .get(oneHourAgo) as { count: number; error_count: number | null };
 
     const total = mainResult.total;
     const pii = mainResult.pii_count;
@@ -267,7 +288,9 @@ export class Logger {
       proxy_requests: mainResult.proxy_count,
       local_requests: mainResult.local_count,
       api_requests: mainResult.api_count,
+      avg_latency_ms: Math.round(mainResult.avg_latency || 0),
       avg_scan_time_ms: Math.round(mainResult.avg_scan_time || 0),
+      avg_provider_call_ms: Math.round(mainResult.avg_provider_call || 0),
       total_tokens: mainResult.total_tokens,
       requests_last_hour: hourResult.count,
       total_prompt_tokens: mainResult.total_prompt,
@@ -280,6 +303,7 @@ export class Logger {
         mainResult.token_requests > 0
           ? Math.round(mainResult.total_tokens / mainResult.token_requests)
           : 0,
+      errors_last_hour: hourResult.error_count ?? 0,
     };
   }
 
@@ -399,6 +423,7 @@ export interface RequestLogData {
   entities: string[];
   latencyMs: number;
   scanTimeMs: number;
+  providerCallMs?: number;
   promptTokens?: number;
   completionTokens?: number;
   cacheCreationInputTokens?: number;
@@ -414,6 +439,7 @@ export interface RequestLogData {
 }
 
 export function logRequest(data: RequestLogData, userAgent: string | null): number | undefined {
+  decrementActive();
   try {
     const config = getConfig();
     const logger = getLogger();
@@ -436,6 +462,7 @@ export function logRequest(data: RequestLogData, userAgent: string | null): numb
       entities: data.entities.join(","),
       latency_ms: data.latencyMs,
       scan_time_ms: data.scanTimeMs,
+      provider_call_ms: data.providerCallMs ?? 0,
       prompt_tokens: data.promptTokens ?? null,
       completion_tokens: data.completionTokens ?? null,
       cache_creation_input_tokens: data.cacheCreationInputTokens ?? null,

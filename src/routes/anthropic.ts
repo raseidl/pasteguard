@@ -30,6 +30,7 @@ import {
 } from "../providers/anthropic/types";
 import { callLocalAnthropic } from "../providers/local";
 import { unmaskSecretsResponse } from "../secrets/mask";
+import { incrementActive } from "../services/active-requests";
 import { logRequest } from "../services/logger";
 import { detectPII, maskPII, type PIIDetectResult } from "../services/pii";
 import { processSecretsRequest, type SecretsProcessResult } from "../services/secrets";
@@ -67,6 +68,7 @@ anthropicRoutes.post(
   }),
   async (c) => {
     const startTime = Date.now();
+    incrementActive();
     let request = c.req.valid("json") as AnthropicRequest;
     const config = getConfig();
 
@@ -322,14 +324,17 @@ async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: 
     toSecretsHeaderData(secretsResult),
   );
 
+  const providerStart = Date.now();
   try {
     const result = await callLocalAnthropic(request, config.local);
+    const providerCallMs = Date.now() - providerStart;
 
     logRequest(
       createLogData({
         provider: "local",
         model: result.model || originalRequest.model,
         startTime,
+        providerCallMs,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
         maskedContent,
@@ -381,8 +386,10 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
     beta: c.req.header("anthropic-beta"),
   };
 
+  const providerStart = Date.now();
   try {
     const result = await callAnthropic(request, config.providers.anthropic!, clientHeaders);
+    const providerCallMs = Date.now() - providerStart;
 
     if (result.isStreaming) {
       const logId = logRequest(
@@ -390,6 +397,7 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
           provider: "anthropic",
           model: result.model || request.model,
           startTime,
+          providerCallMs,
           pii: toPIILogData(piiResult),
           secrets: toSecretsLogData(secretsResult),
           maskedContent,
@@ -412,6 +420,7 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
         provider: "anthropic",
         model: result.model || request.model,
         startTime,
+        providerCallMs,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
         maskedContent,

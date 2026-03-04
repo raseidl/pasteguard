@@ -4,6 +4,7 @@ import { basicAuth } from "hono/basic-auth";
 import { tailwind } from "hono-tailwind";
 import { z } from "zod";
 import { getConfig } from "../config";
+import { getActiveCount, getOldestActiveMs } from "../services/active-requests";
 import { getPIIDetector } from "../pii/detect";
 import { getLogger } from "../services/logger";
 import DashboardPage from "../views/dashboard/page";
@@ -65,6 +66,8 @@ dashboardRoutes.get("/api/stats", (c) => {
 		mode: config.mode,
 		token_anomaly: tokenAnomaly,
 		pii_cache: getPIIDetector().getCacheStats(),
+		active_requests: getActiveCount(),
+		oldest_active_ms: getOldestActiveMs(),
 	});
 });
 
