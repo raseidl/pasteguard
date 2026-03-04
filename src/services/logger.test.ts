@@ -214,6 +214,86 @@ describe("Logger token metrics", () => {
     });
   });
 
+  describe("getRecentErrors()", () => {
+    test("returns empty array when no logs exist", () => {
+      expect(logger.getRecentErrors(5)).toEqual([]);
+    });
+
+    test("returns empty array when all entries have status_code < 400", () => {
+      logger.log(makeEntry({ status_code: 200, error_message: null }));
+      logger.log(makeEntry({ status_code: 201, error_message: null }));
+      expect(logger.getRecentErrors(10)).toEqual([]);
+    });
+
+    test("excludes entries where error_message is null even if status_code >= 400", () => {
+      logger.log(makeEntry({ status_code: 404, error_message: null }));
+      expect(logger.getRecentErrors(10)).toEqual([]);
+    });
+
+    test("returns entries with status_code >= 400 and a non-null error_message", () => {
+      logger.log(makeEntry({ status_code: 502, error_message: "Provider timeout" }));
+      const errors = logger.getRecentErrors(10);
+      expect(errors).toHaveLength(1);
+      expect(errors[0].status_code).toBe(502);
+      expect(errors[0].error_message).toBe("Provider timeout");
+    });
+
+    test("returns fields: timestamp, status_code, error_message, provider, model", () => {
+      logger.log(
+        makeEntry({
+          status_code: 503,
+          error_message: "PII detection service unavailable",
+          provider: "openai" as const,
+          model: "gpt-4o",
+        }),
+      );
+      const errors = logger.getRecentErrors(5);
+      expect(errors[0]).toMatchObject({
+        status_code: 503,
+        error_message: "PII detection service unavailable",
+        provider: "openai",
+        model: "gpt-4o",
+      });
+      expect(typeof errors[0].timestamp).toBe("string");
+    });
+
+    test("respects the limit parameter", () => {
+      for (let i = 0; i < 5; i++) {
+        logger.log(makeEntry({ status_code: 502, error_message: `Error ${i}` }));
+      }
+      expect(logger.getRecentErrors(3)).toHaveLength(3);
+    });
+
+    test("orders results by timestamp DESC (most recent first)", () => {
+      const old = new Date(Date.now() - 10000).toISOString();
+      const recent = new Date().toISOString();
+      logger.log(makeEntry({ timestamp: old, status_code: 400, error_message: "Old error" }));
+      logger.log(makeEntry({ timestamp: recent, status_code: 503, error_message: "New error" }));
+
+      const errors = logger.getRecentErrors(10);
+      expect(errors[0].error_message).toBe("New error");
+      expect(errors[1].error_message).toBe("Old error");
+    });
+
+    test("mixes error and success entries; only errors are returned", () => {
+      logger.log(makeEntry({ status_code: 200, error_message: null }));
+      logger.log(makeEntry({ status_code: 502, error_message: "Bad gateway" }));
+      logger.log(makeEntry({ status_code: 200, error_message: null }));
+      logger.log(makeEntry({ status_code: 400, error_message: "Invalid request" }));
+
+      const errors = logger.getRecentErrors(10);
+      expect(errors).toHaveLength(2);
+      expect(errors.map((e) => e.status_code).sort()).toEqual([400, 502]);
+    });
+
+    test("uses default limit of 5 when no argument provided", () => {
+      for (let i = 0; i < 8; i++) {
+        logger.log(makeEntry({ status_code: 502, error_message: `Error ${i}` }));
+      }
+      expect(logger.getRecentErrors()).toHaveLength(5);
+    });
+  });
+
   describe("getTokenAnomaly()", () => {
     test("returns null when fewer than 10 historical requests", () => {
       for (let i = 0; i < 5; i++) {

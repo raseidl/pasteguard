@@ -10,7 +10,7 @@
  */
 
 import type { CopilotProviderConfig } from "../../config";
-import { REQUEST_TIMEOUT_MS } from "../../constants/timeouts";
+import { DEFAULT_PROVIDER_TIMEOUT_MS } from "../../constants/timeouts";
 import { ProviderError } from "../errors";
 import type { OpenAIRequest, OpenAIResponse } from "../openai/types";
 import type { CopilotCompletionRequest, CopilotCompletionResponse } from "./types";
@@ -106,7 +106,7 @@ export async function callCopilotChat(
     method: "POST",
     headers,
     body: JSON.stringify({ ...request, stream: isStreaming }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -144,7 +144,7 @@ export async function callCopilotCompletion(
     method: "POST",
     headers,
     body: JSON.stringify({ ...request, stream: isStreaming }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
   });
 
   if (!response.ok) {

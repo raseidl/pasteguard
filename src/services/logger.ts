@@ -377,6 +377,33 @@ export class Logger {
   }
 
   /**
+   * Gets recent error logs (status_code >= 400)
+   */
+  getRecentErrors(limit: number = 5): Array<{
+    timestamp: string;
+    status_code: number;
+    error_message: string;
+    provider: string;
+    model: string;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT timestamp, status_code, error_message, provider, model
+         FROM request_logs
+         WHERE status_code >= 400 AND error_message IS NOT NULL
+         ORDER BY timestamp DESC
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      timestamp: string;
+      status_code: number;
+      error_message: string;
+      provider: string;
+      model: string;
+    }>;
+  }
+
+  /**
    * Cleans up old logs based on retention policy
    */
   cleanup(): number {
@@ -438,8 +465,12 @@ export interface RequestLogData {
   errorMessage?: string;
 }
 
-export function logRequest(data: RequestLogData, userAgent: string | null): number | undefined {
-  decrementActive();
+export function logRequest(
+  data: RequestLogData,
+  userAgent: string | null,
+  activeRequestId?: number,
+): number | undefined {
+  decrementActive(activeRequestId);
   try {
     const config = getConfig();
     const logger = getLogger();

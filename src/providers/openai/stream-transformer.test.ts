@@ -202,6 +202,61 @@ describe("createUnmaskingStream", () => {
       expect(called).toBe(false);
     });
 
+    test("normalizes cached_tokens=0: promptTokens is unchanged, no cacheReadInputTokens", async () => {
+      const usageChunk = `data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":50,"prompt_tokens_details":{"cached_tokens":0}}}\n\n`;
+      const source = createSSEStream([usageChunk]);
+
+      let captured: unknown = null;
+      const onUsage = (tokens: unknown) => {
+        captured = tokens;
+      };
+
+      const stream = createUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      await consumeStream(stream);
+
+      // cached_tokens=0 → promptTokens unchanged, no cacheReadInputTokens field
+      expect(captured).toEqual({ promptTokens: 100, completionTokens: 50 });
+      expect((captured as Record<string, unknown>).cacheReadInputTokens).toBeUndefined();
+    });
+
+    test("normalizes cached_tokens>0: promptTokens is reduced, cacheReadInputTokens is set", async () => {
+      // cached_tokens=30 is a SUBSET of prompt_tokens=100 (OpenAI model)
+      // Stored as: promptTokens = 100 - 30 = 70, cacheReadInputTokens = 30
+      const usageChunk = `data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":50,"prompt_tokens_details":{"cached_tokens":30}}}\n\n`;
+      const source = createSSEStream([usageChunk]);
+
+      let captured: unknown = null;
+      const onUsage = (tokens: unknown) => {
+        captured = tokens;
+      };
+
+      const stream = createUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      await consumeStream(stream);
+
+      expect(captured).toEqual({
+        promptTokens: 70,
+        completionTokens: 50,
+        cacheReadInputTokens: 30,
+      });
+    });
+
+    test("handles absent prompt_tokens_details gracefully (treats cached=0)", async () => {
+      // No prompt_tokens_details field at all — should act as cached_tokens=0
+      const usageChunk = `data: {"choices":[],"usage":{"prompt_tokens":80,"completion_tokens":40}}\n\n`;
+      const source = createSSEStream([usageChunk]);
+
+      let captured: unknown = null;
+      const onUsage = (tokens: unknown) => {
+        captured = tokens;
+      };
+
+      const stream = createUnmaskingStream(source, undefined, defaultConfig, undefined, onUsage);
+      await consumeStream(stream);
+
+      expect(captured).toEqual({ promptTokens: 80, completionTokens: 40 });
+      expect((captured as Record<string, unknown>).cacheReadInputTokens).toBeUndefined();
+    });
+
     test("still passes through all events when onUsage is set", async () => {
       const contentChunk = `data: {"choices":[{"delta":{"content":"World"}}]}\n\n`;
       const usageChunk = `data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}\n\n`;

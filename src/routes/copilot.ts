@@ -54,6 +54,7 @@ import {
   type OpenAIResponse,
 } from "../providers/openai/types";
 import { unmaskSecretsResponse } from "../secrets/mask";
+import { incrementActive, setPhase } from "../services/active-requests";
 import { logRequest } from "../services/logger";
 import { detectPII, maskPII, type PIIDetectResult } from "../services/pii";
 import { processSecretsRequest, type SecretsProcessResult } from "../services/secrets";
@@ -100,6 +101,7 @@ copilotRoutes.post(
     }
 
     const startTime = Date.now();
+    const reqId = incrementActive("scanning");
     let request = c.req.valid("json") as OpenAIRequest;
     const incomingHeaders = c.req.header();
 
@@ -107,7 +109,7 @@ copilotRoutes.post(
     const secretsResult = processSecretsRequest(request, config.secrets_detection, openaiExtractor);
 
     if (secretsResult.blocked) {
-      return respondChatBlocked(c, request, secretsResult, startTime);
+      return respondChatBlocked(c, request, secretsResult, startTime, reqId);
     }
 
     if (secretsResult.masked) {
@@ -133,7 +135,7 @@ copilotRoutes.post(
         piiResult = await detectPII(request, openaiExtractor);
       } catch (error) {
         console.error("PII detection error:", error);
-        return respondChatDetectionError(c, request, startTime);
+        return respondChatDetectionError(c, request, startTime, reqId);
       }
     }
 
@@ -145,6 +147,7 @@ copilotRoutes.post(
       piiMaskingContext: piiMasked.maskingContext,
       secretsResult,
       startTime,
+      reqId,
     });
   },
 );
@@ -178,6 +181,7 @@ copilotRoutes.post(
     }
 
     const startTime = Date.now();
+    const reqId = incrementActive("scanning");
     let request = c.req.valid("json") as CopilotCompletionRequest;
     const engine = c.req.param("engine");
     const incomingHeaders = c.req.header();
@@ -186,7 +190,7 @@ copilotRoutes.post(
     const secretsResult = processSecretsRequest(request, config.secrets_detection, codexExtractor);
 
     if (secretsResult.blocked) {
-      return respondCompletionBlocked(c, request, secretsResult, startTime);
+      return respondCompletionBlocked(c, request, secretsResult, startTime, reqId);
     }
 
     if (secretsResult.masked) {
@@ -212,7 +216,7 @@ copilotRoutes.post(
         piiResult = await detectPII(request, codexExtractor);
       } catch (error) {
         console.error("PII detection error:", error);
-        return respondCompletionDetectionError(c, request, startTime);
+        return respondCompletionDetectionError(c, request, startTime, reqId);
       }
     }
 
@@ -226,6 +230,7 @@ copilotRoutes.post(
       piiMaskingContext: piiMasked.maskingContext,
       secretsResult,
       startTime,
+      reqId,
     });
   },
 );
@@ -271,6 +276,7 @@ interface CopilotChatOptions {
   piiMaskingContext?: PlaceholderContext;
   secretsResult: SecretsProcessResult<OpenAIRequest>;
   startTime: number;
+  reqId: number;
 }
 
 interface CopilotCompletionOptions {
@@ -279,6 +285,7 @@ interface CopilotCompletionOptions {
   piiMaskingContext?: PlaceholderContext;
   secretsResult: SecretsProcessResult<CopilotCompletionRequest>;
   startTime: number;
+  reqId: number;
 }
 
 // ─── Chat error handlers ──────────────────────────────────────────────────────
@@ -288,6 +295,7 @@ function respondChatBlocked(
   body: OpenAIRequest,
   secretsResult: SecretsProcessResult<OpenAIRequest>,
   startTime: number,
+  reqId: number,
 ) {
   const secretTypes = secretsResult.blockedTypes ?? [];
   setBlockedHeaders(c, secretTypes);
@@ -301,6 +309,7 @@ function respondChatBlocked(
       errorMessage: secretsResult.blockedReason,
     }),
     c.req.header("User-Agent") || null,
+    reqId,
   );
   return c.json(
     errorFormats.openai.error(
@@ -312,7 +321,12 @@ function respondChatBlocked(
   );
 }
 
-function respondChatDetectionError(c: Context, body: OpenAIRequest, startTime: number) {
+function respondChatDetectionError(
+  c: Context,
+  body: OpenAIRequest,
+  startTime: number,
+  reqId: number,
+) {
   logRequest(
     createLogData({
       provider: "copilot",
@@ -322,6 +336,7 @@ function respondChatDetectionError(c: Context, body: OpenAIRequest, startTime: n
       errorMessage: "Detection service unavailable",
     }),
     c.req.header("User-Agent") || null,
+    reqId,
   );
   return c.json(
     errorFormats.openai.error(
@@ -340,6 +355,7 @@ function respondCompletionBlocked(
   body: CopilotCompletionRequest,
   secretsResult: SecretsProcessResult<CopilotCompletionRequest>,
   startTime: number,
+  reqId: number,
 ) {
   const secretTypes = secretsResult.blockedTypes ?? [];
   setBlockedHeaders(c, secretTypes);
@@ -353,6 +369,7 @@ function respondCompletionBlocked(
       errorMessage: secretsResult.blockedReason,
     }),
     c.req.header("User-Agent") || null,
+    reqId,
   );
   return c.json(
     errorFormats.openai.error(
@@ -368,6 +385,7 @@ function respondCompletionDetectionError(
   c: Context,
   body: CopilotCompletionRequest,
   startTime: number,
+  reqId: number,
 ) {
   logRequest(
     createLogData({
@@ -378,6 +396,7 @@ function respondCompletionDetectionError(
       errorMessage: "Detection service unavailable",
     }),
     c.req.header("User-Agent") || null,
+    reqId,
   );
   return c.json(
     errorFormats.openai.error(
@@ -398,7 +417,7 @@ async function sendCopilotChat(
   opts: CopilotChatOptions,
 ) {
   const config = getConfig();
-  const { request, piiResult, piiMaskingContext, secretsResult, startTime } = opts;
+  const { request, piiResult, piiMaskingContext, secretsResult, startTime, reqId } = opts;
 
   setResponseHeaders(
     c,
@@ -408,6 +427,7 @@ async function sendCopilotChat(
     toSecretsHeaderData(secretsResult),
   );
 
+  setPhase(reqId, "provider");
   try {
     const result = await callCopilotChat(request, config.providers.copilot!, incomingHeaders);
 
@@ -420,6 +440,7 @@ async function sendCopilotChat(
         secrets: toSecretsLogData(secretsResult),
       }),
       c.req.header("User-Agent") || null,
+      reqId,
     );
 
     if (result.isStreaming) {
@@ -450,6 +471,7 @@ async function sendCopilotChat(
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
         userAgent: c.req.header("User-Agent") || null,
+        activeRequestId: reqId,
       },
       (msg) => errorFormats.openai.error(msg, "server_error", "upstream_error"),
     );
@@ -464,7 +486,7 @@ async function sendCopilotCompletion(
   opts: CopilotCompletionOptions,
 ) {
   const config = getConfig();
-  const { request, piiResult, piiMaskingContext, secretsResult, startTime } = opts;
+  const { request, piiResult, piiMaskingContext, secretsResult, startTime, reqId } = opts;
 
   setResponseHeaders(
     c,
@@ -474,6 +496,7 @@ async function sendCopilotCompletion(
     toSecretsHeaderData(secretsResult),
   );
 
+  setPhase(reqId, "provider");
   try {
     const result = await callCopilotCompletion(
       request,
@@ -491,6 +514,7 @@ async function sendCopilotCompletion(
         secrets: toSecretsLogData(secretsResult),
       }),
       c.req.header("User-Agent") || null,
+      reqId,
     );
 
     if (result.isStreaming) {
@@ -521,6 +545,7 @@ async function sendCopilotCompletion(
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
         userAgent: c.req.header("User-Agent") || null,
+        activeRequestId: reqId,
       },
       (msg) => errorFormats.openai.error(msg, "server_error", "upstream_error"),
     );

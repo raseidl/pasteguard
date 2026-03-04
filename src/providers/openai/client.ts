@@ -3,7 +3,7 @@
  */
 
 import type { OpenAIProviderConfig } from "../../config";
-import { REQUEST_TIMEOUT_MS } from "../../constants/timeouts";
+import { DEFAULT_PROVIDER_TIMEOUT_MS } from "../../constants/timeouts";
 import { ProviderError } from "../errors";
 import type { OpenAIRequest, OpenAIResponse } from "./types";
 
@@ -62,6 +62,7 @@ export async function callOpenAI(
   request: OpenAIRequest,
   config: OpenAIProviderConfig,
   authHeader?: string,
+  timeoutMs?: number,
 ): Promise<ProviderResult> {
   const model = request.model;
   const isStreaming = request.stream ?? false;
@@ -106,7 +107,7 @@ export async function callOpenAI(
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS),
   });
 
   if (!response.ok) {

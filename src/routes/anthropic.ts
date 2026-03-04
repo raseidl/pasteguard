@@ -30,7 +30,7 @@ import {
 } from "../providers/anthropic/types";
 import { callLocalAnthropic } from "../providers/local";
 import { unmaskSecretsResponse } from "../secrets/mask";
-import { incrementActive } from "../services/active-requests";
+import { incrementActive, setPhase } from "../services/active-requests";
 import { logRequest } from "../services/logger";
 import { detectPII, maskPII, type PIIDetectResult } from "../services/pii";
 import { processSecretsRequest, type SecretsProcessResult } from "../services/secrets";
@@ -68,7 +68,7 @@ anthropicRoutes.post(
   }),
   async (c) => {
     const startTime = Date.now();
-    incrementActive();
+    const reqId = incrementActive("scanning");
     let request = c.req.valid("json") as AnthropicRequest;
     const config = getConfig();
 
@@ -107,7 +107,7 @@ anthropicRoutes.post(
     );
 
     if (secretsResult.blocked) {
-      return respondBlocked(c, request, secretsResult, startTime);
+      return respondBlocked(c, request, secretsResult, startTime, reqId);
     }
 
     // Apply secrets masking to request
@@ -134,7 +134,7 @@ anthropicRoutes.post(
         piiResult = await detectPII(request, anthropicExtractor);
       } catch (error) {
         console.error("PII detection error:", error);
-        return respondDetectionError(c, request, secretsResult, startTime);
+        return respondDetectionError(c, request, secretsResult, startTime, reqId);
       }
     }
 
@@ -148,6 +148,7 @@ anthropicRoutes.post(
       return sendToLocal(c, request, {
         request,
         startTime,
+        reqId,
         piiResult,
         secretsResult,
       });
@@ -169,6 +170,7 @@ anthropicRoutes.post(
     // Step 5: Send to Anthropic
     return sendToAnthropic(c, request, {
       startTime,
+      reqId,
       piiResult,
       piiMaskingContext,
       secretsResult,
@@ -210,6 +212,7 @@ anthropicRoutes.all("/*", async (c) => {
 
 interface SendOptions {
   startTime: number;
+  reqId: number;
   piiResult: PIIDetectResult;
   piiMaskingContext?: PlaceholderContext;
   secretsResult: SecretsProcessResult<AnthropicRequest>;
@@ -219,6 +222,7 @@ interface SendOptions {
 interface LocalOptions {
   request: AnthropicRequest;
   startTime: number;
+  reqId: number;
   piiResult: PIIDetectResult;
   secretsResult: SecretsProcessResult<AnthropicRequest>;
 }
@@ -256,6 +260,7 @@ function respondBlocked(
   request: AnthropicRequest,
   secretsResult: SecretsProcessResult<AnthropicRequest>,
   startTime: number,
+  reqId: number,
 ) {
   const secretTypes = secretsResult.blockedTypes ?? [];
 
@@ -271,6 +276,7 @@ function respondBlocked(
       errorMessage: `Request blocked: detected secret material (${secretTypes.join(",")})`,
     }),
     c.req.header("User-Agent") || null,
+    reqId,
   );
 
   return c.json(
@@ -287,6 +293,7 @@ function respondDetectionError(
   request: AnthropicRequest,
   secretsResult: SecretsProcessResult<AnthropicRequest>,
   startTime: number,
+  reqId: number,
 ) {
   logRequest(
     createLogData({
@@ -298,6 +305,7 @@ function respondDetectionError(
       errorMessage: "PII detection service unavailable",
     }),
     c.req.header("User-Agent") || null,
+    reqId,
   );
 
   return respondError(c, "PII detection service unavailable", 503);
@@ -307,7 +315,7 @@ function respondDetectionError(
 
 async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: LocalOptions) {
   const config = getConfig();
-  const { request, piiResult, secretsResult, startTime } = opts;
+  const { request, piiResult, secretsResult, startTime, reqId } = opts;
 
   if (!config.local) {
     throw new Error("Local provider not configured");
@@ -324,6 +332,7 @@ async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: 
     toSecretsHeaderData(secretsResult),
   );
 
+  setPhase(reqId, "provider");
   const providerStart = Date.now();
   try {
     const result = await callLocalAnthropic(request, config.local);
@@ -340,6 +349,7 @@ async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: 
         maskedContent,
       }),
       c.req.header("User-Agent") || null,
+      reqId,
     );
 
     if (result.isStreaming) {
@@ -362,6 +372,7 @@ async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: 
         secrets: toSecretsLogData(secretsResult),
         maskedContent,
         userAgent: c.req.header("User-Agent") || null,
+        activeRequestId: reqId,
       },
       (msg) => errorFormats.anthropic.error(msg, "server_error"),
     );
@@ -370,7 +381,7 @@ async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: 
 
 async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: SendOptions) {
   const config = getConfig();
-  const { startTime, piiResult, piiMaskingContext, secretsResult, maskedContent } = opts;
+  const { startTime, reqId, piiResult, piiMaskingContext, secretsResult, maskedContent } = opts;
 
   setResponseHeaders(
     c,
@@ -386,12 +397,19 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
     beta: c.req.header("anthropic-beta"),
   };
 
+  setPhase(reqId, "provider");
   const providerStart = Date.now();
   try {
-    const result = await callAnthropic(request, config.providers.anthropic!, clientHeaders);
+    const result = await callAnthropic(
+      request,
+      config.providers.anthropic!,
+      clientHeaders,
+      config.server.provider_timeout_ms,
+    );
     const providerCallMs = Date.now() - providerStart;
 
     if (result.isStreaming) {
+      setPhase(reqId, "streaming");
       const logId = logRequest(
         createLogData({
           provider: "anthropic",
@@ -404,7 +422,7 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
         }),
         c.req.header("User-Agent") || null,
       );
-      const onUsage = createTokenUpdateCallback(logId);
+      const onUsage = createTokenUpdateCallback(logId, reqId);
       return respondStreaming(
         c,
         result.response,
@@ -430,6 +448,7 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
         cacheReadInputTokens: usage?.cache_read_input_tokens,
       }),
       c.req.header("User-Agent") || null,
+      reqId,
     );
 
     return respondJson(c, result.response, piiMaskingContext, secretsResult.maskingContext);
@@ -445,6 +464,7 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
         secrets: toSecretsLogData(secretsResult),
         maskedContent,
         userAgent: c.req.header("User-Agent") || null,
+        activeRequestId: reqId,
       },
       (msg) => errorFormats.anthropic.error(msg, "server_error"),
     );

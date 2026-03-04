@@ -4,7 +4,7 @@
  */
 
 import type { LocalProviderConfig } from "../config";
-import { HEALTH_CHECK_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from "../constants/timeouts";
+import { DEFAULT_PROVIDER_TIMEOUT_MS, HEALTH_CHECK_TIMEOUT_MS } from "../constants/timeouts";
 import type { AnthropicResult } from "./anthropic/client";
 import type { AnthropicRequest, AnthropicResponse } from "./anthropic/types";
 import { ProviderError, type ProviderResult } from "./openai/client";
@@ -32,7 +32,7 @@ export async function callLocal(
     method: "POST",
     headers,
     body: JSON.stringify({ ...request, model: config.model, stream: isStreaming }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -75,7 +75,7 @@ export async function callLocalAnthropic(
     method: "POST",
     headers,
     body: JSON.stringify({ ...request, model: config.model, stream: isStreaming }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
   });
 
   if (!response.ok) {

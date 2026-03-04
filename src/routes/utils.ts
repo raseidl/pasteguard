@@ -8,6 +8,7 @@
 import type { Context } from "hono";
 import { getConfig } from "../config";
 import { ProviderError } from "../providers/errors";
+import { decrementActive } from "../services/active-requests";
 import type { RequestLogData, TokenUsage } from "../services/logger";
 import { getLogger, logRequest } from "../services/logger";
 import type { PIIDetectResult } from "../services/pii";
@@ -270,17 +271,25 @@ export function createLogData(options: CreateLogDataOptions): RequestLogData {
 
 /**
  * Creates a callback that updates token counts for a streaming log entry.
- * Returns undefined if logId is not available (logging failed).
+ * When activeRequestId is provided, the active request is decremented
+ * when the callback fires (i.e. at end-of-stream), keeping the request
+ * visible in the "streaming" phase until the stream completes.
  */
 export function createTokenUpdateCallback(
   logId: number | undefined,
+  activeRequestId?: number,
 ): ((tokens: TokenUsage) => void) | undefined {
-  if (logId === undefined) return undefined;
+  if (logId === undefined && activeRequestId === undefined) return undefined;
   return (tokens: TokenUsage) => {
     try {
-      getLogger().updateTokens(logId, tokens);
+      if (logId !== undefined) {
+        getLogger().updateTokens(logId, tokens);
+      }
     } catch (e) {
       console.error("Token update failed:", e);
+    }
+    if (activeRequestId !== undefined) {
+      decrementActive(activeRequestId);
     }
   };
 }
@@ -299,6 +308,7 @@ export interface ProviderErrorContext {
   secrets?: SecretsLogData;
   maskedContent?: string;
   userAgent: string | null;
+  activeRequestId?: number;
 }
 
 /**
@@ -329,6 +339,7 @@ export function handleProviderError(
         errorMessage: error.errorMessage,
       }),
       ctx.userAgent,
+      ctx.activeRequestId,
     );
 
     return new Response(error.body, {
@@ -352,6 +363,7 @@ export function handleProviderError(
       errorMessage,
     }),
     ctx.userAgent,
+    ctx.activeRequestId,
   );
 
   return c.json(formatError(errorMessage), 502);

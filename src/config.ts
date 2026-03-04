@@ -78,6 +78,7 @@ const PIIDetectionSchema = z.object({
 const ServerSchema = z.object({
   port: z.coerce.number().int().min(1).max(65535).default(3000),
   host: z.string().default("0.0.0.0"),
+  provider_timeout_ms: z.coerce.number().int().min(1000).default(60_000),
 });
 
 const LoggingSchema = z.object({

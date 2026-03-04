@@ -11,6 +11,9 @@ mode: mask
 server:
   port: 3000
   host: "0.0.0.0"
+  # Timeout for upstream provider API calls (ms). Covers time to first byte
+  # for streaming, or full response for non-streaming. Default: 60000 (60s).
+  # provider_timeout_ms: 60000
 
 # Providers - API endpoints
 # Can be cloud (OpenAI, Anthropic, Azure) or self-hosted (vLLM, LiteLLM proxy, etc.)

@@ -272,6 +272,7 @@ const DashboardPage: FC = () => {
 					<CacheAndTokenGrid />
 					<TokenAnomalyBanner />
 					<Charts />
+					<RecentErrors />
 					<LogsSection />
 				</div>
 				<ClientScript />
@@ -630,6 +631,18 @@ const Charts: FC = () => (
 	</div>
 );
 
+const RecentErrors: FC = () => (
+	<div id="recent-errors-section" class="hidden mb-8 animate-fade-in">
+		<div class="text-[0.8rem] font-semibold text-error mb-4 uppercase tracking-wide flex items-center gap-2">
+			<svg viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
+				<path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996a.75.75 0 1 0-1.5 0v3a.75.75 0 0 0 1.5 0ZM8 10.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
+			</svg>
+			Recent Errors
+		</div>
+		<div id="recent-errors-list" class="flex flex-col gap-2" />
+	</div>
+);
+
 const LogsSection: FC = () => (
 	<>
 		<div class="text-[0.8rem] font-semibold text-text-secondary mb-4 uppercase tracking-wide">
@@ -755,8 +768,9 @@ async function fetchStats() {
       ? 'inline-flex items-center px-3 py-1.5 rounded-md font-mono text-[0.7rem] font-medium tracking-wide uppercase bg-success/10 text-success border border-success/20'
       : 'inline-flex items-center px-3 py-1.5 rounded-md font-mono text-[0.7rem] font-medium tracking-wide uppercase bg-accent/10 text-accent border border-accent/20';
 
-    // Activity indicator: goes amber when requests are in flight
+    // Activity indicator: goes amber when requests are in flight, shows phase breakdown
     const active = data.active_requests || 0;
+    const phases = data.active_phases || { scanning: 0, provider: 0, streaming: 0 };
     const actDot = document.getElementById('activity-dot');
     const actLabel = document.getElementById('activity-label');
     const actPill = document.getElementById('activity-pill');
@@ -766,7 +780,12 @@ async function fetchStats() {
       const age = secs >= 60
         ? Math.floor(secs / 60) + 'm ' + (secs % 60) + 's'
         : secs + 's';
-      actLabel.textContent = active + ' active (' + age + ')';
+      var parts = [];
+      if (phases.scanning > 0) parts.push(phases.scanning + ' scanning');
+      if (phases.provider > 0) parts.push(phases.provider + ' provider');
+      if (phases.streaming > 0) parts.push(phases.streaming + ' streaming');
+      var phaseText = parts.length > 0 ? parts.join(', ') : active + ' active';
+      actLabel.textContent = phaseText + ' (' + age + ')';
       actPill.style.color = 'var(--color-accent)';
       actPill.style.borderColor = 'rgba(180, 83, 9, 0.3)';
       actPill.style.background = 'rgba(180, 83, 9, 0.06)';
@@ -855,6 +874,29 @@ async function fetchStats() {
       anomalyBanner.classList.remove('hidden');
     } else {
       anomalyBanner.classList.add('hidden');
+    }
+
+    // Recent errors summary
+    var errSection = document.getElementById('recent-errors-section');
+    var errList = document.getElementById('recent-errors-list');
+    if (data.recent_errors && data.recent_errors.length > 0) {
+      errList.innerHTML = data.recent_errors.map(function(e) {
+        var t = new Date(e.timestamp).toLocaleTimeString();
+        var badge = e.status_code >= 500
+          ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded-sm font-mono text-[0.6rem] font-medium bg-error/10 text-error">' + e.status_code + '</span>'
+          : '<span class="inline-flex items-center px-1.5 py-0.5 rounded-sm font-mono text-[0.6rem] font-medium bg-accent/10 text-accent">' + e.status_code + '</span>';
+        var msg = (e.error_message || 'Unknown error').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        if (msg.length > 120) msg = msg.substring(0, 120) + '…';
+        return '<div class="flex items-center gap-3 px-4 py-2.5 bg-surface border border-border-subtle rounded-lg text-xs">' +
+          '<span class="font-mono text-[0.65rem] text-text-muted shrink-0">' + t + '</span>' +
+          badge +
+          '<span class="font-mono text-[0.6rem] text-text-muted shrink-0">' + e.provider + '</span>' +
+          '<span class="text-text-secondary truncate">' + msg + '</span>' +
+        '</div>';
+      }).join('');
+      errSection.classList.remove('hidden');
+    } else {
+      errSection.classList.add('hidden');
     }
   } catch (err) {
     console.error('Failed to fetch stats:', err);

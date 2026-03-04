@@ -34,7 +34,7 @@ import {
   type OpenAIResponse,
 } from "../providers/openai/types";
 import { unmaskSecretsResponse } from "../secrets/mask";
-import { incrementActive } from "../services/active-requests";
+import { incrementActive, setPhase } from "../services/active-requests";
 import { logRequest } from "../services/logger";
 import { detectPII, maskPII, type PIIDetectResult } from "../services/pii";
 import { processSecretsRequest, type SecretsProcessResult } from "../services/secrets";
@@ -73,7 +73,7 @@ openaiRoutes.post(
   }),
   async (c) => {
     const startTime = Date.now();
-    incrementActive();
+    const reqId = incrementActive("scanning");
     let request = c.req.valid("json") as OpenAIRequest;
     const config = getConfig();
 
@@ -81,7 +81,7 @@ openaiRoutes.post(
     const secretsResult = processSecretsRequest(request, config.secrets_detection, openaiExtractor);
 
     if (secretsResult.blocked) {
-      return respondBlocked(c, request, secretsResult, startTime);
+      return respondBlocked(c, request, secretsResult, startTime, reqId);
     }
 
     // Apply secrets masking to request
@@ -108,7 +108,7 @@ openaiRoutes.post(
         piiResult = await detectPII(request, openaiExtractor);
       } catch (error) {
         console.error("PII detection error:", error);
-        return respondDetectionError(c, request, startTime);
+        return respondDetectionError(c, request, startTime, reqId);
       }
     }
 
@@ -121,6 +121,7 @@ openaiRoutes.post(
         piiMaskingContext: piiMasked.maskingContext,
         secretsResult,
         startTime,
+        reqId,
         authHeader: c.req.header("Authorization"),
       });
     }
@@ -136,6 +137,7 @@ openaiRoutes.post(
         piiResult,
         secretsResult,
         startTime,
+        reqId,
       });
     }
 
@@ -144,6 +146,7 @@ openaiRoutes.post(
       piiResult,
       secretsResult,
       startTime,
+      reqId,
       authHeader: c.req.header("Authorization"),
     });
   },
@@ -175,6 +178,7 @@ interface OpenAIOptions {
   piiMaskingContext?: PlaceholderContext;
   secretsResult: SecretsProcessResult<OpenAIRequest>;
   startTime: number;
+  reqId: number;
   authHeader?: string;
 }
 
@@ -183,6 +187,7 @@ interface LocalOptions {
   piiResult: PIIDetectResult;
   secretsResult: SecretsProcessResult<OpenAIRequest>;
   startTime: number;
+  reqId: number;
 }
 
 // --- Helpers ---
@@ -204,6 +209,7 @@ function respondBlocked(
   body: OpenAIRequest,
   secretsResult: SecretsProcessResult<OpenAIRequest>,
   startTime: number,
+  reqId: number,
 ) {
   const secretTypes = secretsResult.blockedTypes ?? [];
 
@@ -219,6 +225,7 @@ function respondBlocked(
       errorMessage: secretsResult.blockedReason,
     }),
     c.req.header("User-Agent") || null,
+    reqId,
   );
 
   return c.json(
@@ -231,7 +238,7 @@ function respondBlocked(
   );
 }
 
-function respondDetectionError(c: Context, body: OpenAIRequest, startTime: number) {
+function respondDetectionError(c: Context, body: OpenAIRequest, startTime: number, reqId: number) {
   logRequest(
     createLogData({
       provider: "openai",
@@ -241,6 +248,7 @@ function respondDetectionError(c: Context, body: OpenAIRequest, startTime: numbe
       errorMessage: "Detection service unavailable",
     }),
     c.req.header("User-Agent") || null,
+    reqId,
   );
 
   return c.json(
@@ -257,7 +265,8 @@ function respondDetectionError(c: Context, body: OpenAIRequest, startTime: numbe
 
 async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: OpenAIOptions) {
   const config = getConfig();
-  const { request, piiResult, piiMaskingContext, secretsResult, startTime, authHeader } = opts;
+  const { request, piiResult, piiMaskingContext, secretsResult, startTime, reqId, authHeader } =
+    opts;
 
   const maskedContent =
     piiResult.hasPII || secretsResult.masked ? formatMessagesForLog(request.messages) : undefined;
@@ -270,12 +279,19 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
     toSecretsHeaderData(secretsResult),
   );
 
+  setPhase(reqId, "provider");
   const providerStart = Date.now();
   try {
-    const result = await callOpenAI(request, config.providers.openai, authHeader);
+    const result = await callOpenAI(
+      request,
+      config.providers.openai,
+      authHeader,
+      config.server.provider_timeout_ms,
+    );
     const providerCallMs = Date.now() - providerStart;
 
     if (result.isStreaming) {
+      setPhase(reqId, "streaming");
       const logId = logRequest(
         createLogData({
           provider: "openai",
@@ -288,7 +304,7 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
         }),
         c.req.header("User-Agent") || null,
       );
-      const onUsage = createTokenUpdateCallback(logId);
+      const onUsage = createTokenUpdateCallback(logId, reqId);
       return respondStreaming(
         c,
         result,
@@ -318,6 +334,7 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
         ...(cachedTokens > 0 ? { cacheReadInputTokens: cachedTokens } : {}),
       }),
       c.req.header("User-Agent") || null,
+      reqId,
     );
 
     return respondJson(
@@ -339,6 +356,7 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
         secrets: toSecretsLogData(secretsResult),
         maskedContent,
         userAgent: c.req.header("User-Agent") || null,
+        activeRequestId: reqId,
       },
       (msg) => errorFormats.openai.error(msg, "server_error", "upstream_error"),
     );
@@ -347,7 +365,7 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
 
 async function sendToLocal(c: Context, originalRequest: OpenAIRequest, opts: LocalOptions) {
   const config = getConfig();
-  const { request, piiResult, secretsResult, startTime } = opts;
+  const { request, piiResult, secretsResult, startTime, reqId } = opts;
 
   if (!config.local) {
     throw new Error("Local provider not configured");
@@ -364,6 +382,7 @@ async function sendToLocal(c: Context, originalRequest: OpenAIRequest, opts: Loc
     toSecretsHeaderData(secretsResult),
   );
 
+  setPhase(reqId, "provider");
   const providerStart = Date.now();
   try {
     const result = await callLocal(request, config.local);
@@ -380,6 +399,7 @@ async function sendToLocal(c: Context, originalRequest: OpenAIRequest, opts: Loc
         maskedContent,
       }),
       c.req.header("User-Agent") || null,
+      reqId,
     );
 
     if (result.isStreaming) {
@@ -402,6 +422,7 @@ async function sendToLocal(c: Context, originalRequest: OpenAIRequest, opts: Loc
         secrets: toSecretsLogData(secretsResult),
         maskedContent,
         userAgent: c.req.header("User-Agent") || null,
+        activeRequestId: reqId,
       },
       (msg) => errorFormats.openai.error(msg, "server_error", "upstream_error"),
     );

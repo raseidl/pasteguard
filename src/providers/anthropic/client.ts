@@ -3,7 +3,7 @@
  */
 
 import type { AnthropicProviderConfig } from "../../config";
-import { REQUEST_TIMEOUT_MS } from "../../constants/timeouts";
+import { DEFAULT_PROVIDER_TIMEOUT_MS } from "../../constants/timeouts";
 import { ProviderError } from "../errors";
 import type { AnthropicRequest, AnthropicResponse } from "./types";
 
@@ -76,6 +76,7 @@ export async function callAnthropic(
   request: AnthropicRequest,
   config: AnthropicProviderConfig,
   clientHeaders?: AnthropicClientHeaders,
+  timeoutMs?: number,
 ): Promise<AnthropicResult> {
   const isStreaming = request.stream ?? false;
   const baseUrl = (config.base_url || DEFAULT_ANTHROPIC_URL).replace(/\/$/, "");
@@ -104,7 +105,7 @@ export async function callAnthropic(
     method: "POST",
     headers,
     body: JSON.stringify(request),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS),
   });
 
   if (!response.ok) {

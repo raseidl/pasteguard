@@ -4,7 +4,7 @@ import { basicAuth } from "hono/basic-auth";
 import { tailwind } from "hono-tailwind";
 import { z } from "zod";
 import { getConfig } from "../config";
-import { getActiveCount, getOldestActiveMs } from "../services/active-requests";
+import { getActiveCount, getActivePhases, getOldestActiveMs } from "../services/active-requests";
 import { getPIIDetector } from "../pii/detect";
 import { getLogger } from "../services/logger";
 import DashboardPage from "../views/dashboard/page";
@@ -68,6 +68,8 @@ dashboardRoutes.get("/api/stats", (c) => {
 		pii_cache: getPIIDetector().getCacheStats(),
 		active_requests: getActiveCount(),
 		oldest_active_ms: getOldestActiveMs(),
+		active_phases: getActivePhases(),
+		recent_errors: logger.getRecentErrors(5),
 	});
 });
 
