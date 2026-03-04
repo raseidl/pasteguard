@@ -1,3 +1,29 @@
+import { mock } from "bun:test";
+
+mock.module("../config", () => ({
+  getConfig: () => ({
+    mode: "mask",
+    providers: {
+      openai: { base_url: "https://api.openai.com/v1" },
+      anthropic: { base_url: "https://api.anthropic.com" },
+    },
+    pii_detection: {
+      languages: ["en"],
+      fallback_language: "en",
+      score_threshold: 0.7,
+      entities: ["EMAIL_ADDRESS", "PERSON"],
+    },
+    masking: { show_markers: false },
+    local: null,
+  }),
+}));
+
+mock.module("../pii/detect", () => ({
+  getPIIDetector: () => ({
+    getLanguageValidation: () => null,
+  }),
+}));
+
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { infoRoutes } from "./info";
