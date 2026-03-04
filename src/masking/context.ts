@@ -75,9 +75,10 @@ export function restorePlaceholders(
 
   // Sort placeholders by length descending to avoid partial replacements.
   // Cache the sorted keys since this is called on every streaming chunk.
-  const placeholders =
-    context._sortedKeys ??
-    (context._sortedKeys = Object.keys(context.mapping).sort((a, b) => b.length - a.length));
+  if (!context._sortedKeys) {
+    context._sortedKeys = Object.keys(context.mapping).sort((a, b) => b.length - a.length);
+  }
+  const placeholders = context._sortedKeys;
 
   for (const placeholder of placeholders) {
     if (!result.includes(placeholder)) continue;

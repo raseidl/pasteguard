@@ -9,7 +9,7 @@ describe("collectCopilotHeaders", () => {
 
   test("forwards authorization header", () => {
     const headers = collectCopilotHeaders({ authorization: "Bearer token123" });
-    expect(headers["authorization"]).toBe("Bearer token123");
+    expect(headers.authorization).toBe("Bearer token123");
   });
 
   test("forwards editor-version header", () => {
@@ -32,7 +32,7 @@ describe("collectCopilotHeaders", () => {
     };
     const headers = collectCopilotHeaders(incoming);
 
-    expect(headers["authorization"]).toBe("Bearer tok");
+    expect(headers.authorization).toBe("Bearer tok");
     expect(headers["editor-version"]).toBe("vscode/1.85.0");
     expect(headers["editor-plugin-version"]).toBe("copilot/1.x");
     expect(headers["copilot-integration-id"]).toBe("vscode-copilot");
@@ -53,9 +53,9 @@ describe("collectCopilotHeaders", () => {
     });
 
     expect(headers["x-custom-header"]).toBeUndefined();
-    expect(headers["cookie"]).toBeUndefined();
+    expect(headers.cookie).toBeUndefined();
     expect(headers["proxy-authorization"]).toBeUndefined();
-    expect(headers["authorization"]).toBe("Bearer tok");
+    expect(headers.authorization).toBe("Bearer tok");
   });
 
   test("omits allowed headers that are not present", () => {
@@ -73,6 +73,6 @@ describe("collectCopilotHeaders", () => {
   test("does not include undefined values", () => {
     const headers = collectCopilotHeaders({ authorization: undefined });
 
-    expect(headers["authorization"]).toBeUndefined();
+    expect(headers.authorization).toBeUndefined();
   });
 });

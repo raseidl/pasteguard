@@ -7,8 +7,7 @@
  * own dedicated test files).
  */
 
-import { beforeEach, describe, expect, test } from "bun:test";
-import { mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 // ============================================================
 // Mock only ../config — same structure as logger.test.ts

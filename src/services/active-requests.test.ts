@@ -111,7 +111,7 @@ describe("active-requests", () => {
     });
 
     test("removes the oldest (first inserted) entry when called without an ID", () => {
-      const id1 = incrementActive("scanning");
+      const _id1 = incrementActive("scanning");
       const id2 = incrementActive("provider");
       const before = getActiveCount();
 

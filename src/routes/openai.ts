@@ -39,6 +39,7 @@ import { logRequest } from "../services/logger";
 import { detectPII, maskPII, type PIIDetectResult } from "../services/pii";
 import { processSecretsRequest, type SecretsProcessResult } from "../services/secrets";
 import { extractTextContent } from "../utils/content";
+import type { TokenUsage } from "./utils";
 import {
   createLogData,
   createTokenUpdateCallback,
@@ -51,7 +52,6 @@ import {
   toSecretsHeaderData,
   toSecretsLogData,
 } from "./utils";
-import type { TokenUsage } from "./utils";
 
 export const openaiRoutes = new Hono();
 
