@@ -5,6 +5,7 @@ import { tailwind } from "hono-tailwind";
 import { z } from "zod";
 import { getConfig } from "../config";
 import { getActiveCount, getActivePhases, getOldestActiveMs } from "../services/active-requests";
+import { getProviderStatuses } from "../services/provider-status";
 import { getPIIDetector } from "../pii/detect";
 import { getLogger } from "../services/logger";
 import DashboardPage from "../views/dashboard/page";
@@ -71,6 +72,14 @@ dashboardRoutes.get("/api/stats", (c) => {
 		active_phases: getActivePhases(),
 		recent_errors: logger.getRecentErrors(5),
 	});
+});
+
+/**
+ * GET /api/provider-status - Get upstream provider operational status
+ */
+dashboardRoutes.get("/api/provider-status", async (c) => {
+	const statuses = await getProviderStatuses();
+	return c.json(statuses);
 });
 
 /**

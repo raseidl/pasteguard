@@ -39,6 +39,7 @@ const DashboardPage: FC = () => {
 								--color-success-bg: #dcfce7;
 								--color-error: #dc2626;
 								--color-error-bg: #fee2e2;
+								--color-warning: #ca8a04;
 								--color-info: #2563eb;
 								--color-info-bg: #dbeafe;
 								--color-teal: #0d9488;
@@ -281,6 +282,17 @@ const DashboardPage: FC = () => {
 	);
 };
 
+const StatusPill: FC<{ id: string; label: string }> = ({ id, label }) => (
+	<div
+		id={id}
+		class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[0.65rem] font-medium tracking-wide bg-elevated text-text-muted border border-border-subtle"
+		title="Loading..."
+	>
+		<span id={`${id}-dot`} class="w-[6px] h-[6px] rounded-full bg-text-muted opacity-40" />
+		<span>{label}</span>
+	</div>
+);
+
 const Header: FC = () => (
 	<header class="flex justify-between items-center mb-10">
 		<div class="flex items-center gap-3">
@@ -293,6 +305,11 @@ const Header: FC = () => (
 			<div class="text-xl font-bold text-text-primary" style="letter-spacing: var(--tracking-tight)">
 				Paste<span class="text-accent">Guard</span>
 			</div>
+		</div>
+		<div class="flex items-center gap-3">
+			<StatusPill id="status-openai" label="OpenAI" />
+			<StatusPill id="status-claude" label="Claude" />
+			<StatusPill id="status-gemini" label="Gemini" />
 		</div>
 		<div class="flex items-center gap-4">
 			<span
@@ -1054,9 +1071,42 @@ async function fetchLogs() {
   }
 }
 
+
+var statusStyles = {
+  none:     { dot: 'bg-success',  pill: 'text-success border border-success/20 bg-success/10',  title: 'Operational' },
+  minor:    { dot: 'bg-warning',  pill: 'text-warning border border-warning/20 bg-warning/10',  title: 'Minor issues' },
+  major:    { dot: 'bg-error',    pill: 'text-error border border-error/20 bg-error/10',          title: 'Major outage' },
+  critical: { dot: 'bg-error',    pill: 'text-error border border-error/20 bg-error/10',          title: 'Critical outage' },
+  unknown:  { dot: 'bg-text-muted opacity-40', pill: 'text-text-muted border border-border-subtle bg-elevated', title: 'Status unknown' },
+};
+
+function updateStatusPill(id, level) {
+  var pill = document.getElementById(id);
+  var dot = document.getElementById(id + '-dot');
+  if (!pill || !dot) return;
+  var s = statusStyles[level] || statusStyles.unknown;
+  pill.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[0.65rem] font-medium tracking-wide ' + s.pill;
+  dot.className = 'w-[6px] h-[6px] rounded-full ' + s.dot;
+  pill.title = s.title;
+}
+
+async function fetchProviderStatus() {
+  try {
+    var res = await fetch('/dashboard/api/provider-status');
+    var data = await res.json();
+    updateStatusPill('status-openai', data.openai);
+    updateStatusPill('status-claude', data.claude);
+    updateStatusPill('status-gemini', data.gemini);
+  } catch (err) {
+    console.error('Failed to fetch provider status:', err);
+  }
+}
+
 fetchStats();
 fetchLogs();
+fetchProviderStatus();
 setInterval(() => { fetchStats(); fetchLogs(); }, 5000);
+setInterval(fetchProviderStatus, 60000);
 
     // Auto-flip tooltips that would overflow the top of the viewport
     document.addEventListener('mouseover', function(e) {
