@@ -79,6 +79,11 @@ export class Logger {
   private db: Database;
   private retentionDays: number;
   private insertStmt: ReturnType<Database["prepare"]>;
+  private updateTokensStmt: ReturnType<Database["prepare"]>;
+  private writeQueue: Array<{ id: number; entry: Omit<RequestLog, "id"> }> = [];
+  private tokenUpdateQueue: Array<{ id: number; tokens: TokenUsage }> = [];
+  private nextId: number;
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     const config = getConfig();
@@ -95,10 +100,19 @@ export class Logger {
     this.initializeDatabase();
     this.insertStmt = this.db.prepare(`
       INSERT INTO request_logs
-        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, provider_call_ms, prompt_tokens, completion_tokens, cache_creation_input_tokens, cache_read_input_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types, status_code, error_message)
+        (id, timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, provider_call_ms, prompt_tokens, completion_tokens, cache_creation_input_tokens, cache_read_input_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types, status_code, error_message)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    this.updateTokensStmt = this.db.prepare(
+      `UPDATE request_logs SET prompt_tokens=?, completion_tokens=?, cache_creation_input_tokens=?, cache_read_input_tokens=? WHERE id=?`,
+    );
+
+    // Initialize ID counter from existing data
+    const maxRow = this.db
+      .query("SELECT COALESCE(MAX(id), 0) as maxId FROM request_logs")
+      .get() as { maxId: number };
+    this.nextId = maxRow.maxId + 1;
   }
 
   private initializeDatabase(): void {
@@ -167,55 +181,92 @@ export class Logger {
   }
 
   log(entry: Omit<RequestLog, "id">): number {
-    this.insertStmt.run(
-      entry.timestamp,
-      entry.mode,
-      entry.provider,
-      entry.model,
-      entry.pii_detected ? 1 : 0,
-      entry.entities,
-      entry.latency_ms,
-      entry.scan_time_ms,
-      entry.provider_call_ms,
-      entry.prompt_tokens,
-      entry.completion_tokens,
-      entry.cache_creation_input_tokens ?? null,
-      entry.cache_read_input_tokens ?? null,
-      entry.user_agent,
-      entry.language,
-      entry.language_fallback ? 1 : 0,
-      entry.detected_language,
-      entry.masked_content,
-      entry.secrets_detected ?? null,
-      entry.secrets_types ?? null,
-      entry.status_code ?? null,
-      entry.error_message ?? null,
-    );
-    const result = this.db.query("SELECT last_insert_rowid() as id").get() as { id: number } | null;
-    return result?.id ?? 0;
+    const id = this.nextId++;
+    this.writeQueue.push({ id, entry });
+    this.scheduleFlush();
+    return id;
   }
 
   /**
    * Updates token counts for a previously logged request (used for streaming)
    */
   updateTokens(logId: number, tokens: TokenUsage): void {
-    this.db
-      .prepare(
-        `UPDATE request_logs SET prompt_tokens=?, completion_tokens=?, cache_creation_input_tokens=?, cache_read_input_tokens=? WHERE id=?`,
-      )
-      .run(
-        tokens.promptTokens,
-        tokens.completionTokens,
-        tokens.cacheCreationInputTokens ?? null,
-        tokens.cacheReadInputTokens ?? null,
-        logId,
-      );
+    this.tokenUpdateQueue.push({ id: logId, tokens });
+    this.scheduleFlush();
+  }
+
+  /**
+   * Schedules a deferred flush of all queued writes.
+   * Uses setTimeout(0) to batch writes from concurrent requests into a single transaction.
+   */
+  private scheduleFlush(): void {
+    if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => this.flush(), 0);
+    }
+  }
+
+  /**
+   * Flushes all queued inserts and token updates to the database in a single transaction.
+   */
+  flush(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    if (this.writeQueue.length === 0 && this.tokenUpdateQueue.length === 0) return;
+
+    const inserts = this.writeQueue.splice(0);
+    const updates = this.tokenUpdateQueue.splice(0);
+
+    try {
+      this.db.transaction(() => {
+        for (const { id, entry } of inserts) {
+          this.insertStmt.run(
+            id,
+            entry.timestamp,
+            entry.mode,
+            entry.provider,
+            entry.model,
+            entry.pii_detected ? 1 : 0,
+            entry.entities,
+            entry.latency_ms,
+            entry.scan_time_ms,
+            entry.provider_call_ms,
+            entry.prompt_tokens,
+            entry.completion_tokens,
+            entry.cache_creation_input_tokens ?? null,
+            entry.cache_read_input_tokens ?? null,
+            entry.user_agent,
+            entry.language,
+            entry.language_fallback ? 1 : 0,
+            entry.detected_language,
+            entry.masked_content,
+            entry.secrets_detected ?? null,
+            entry.secrets_types ?? null,
+            entry.status_code ?? null,
+            entry.error_message ?? null,
+          );
+        }
+        for (const { id, tokens } of updates) {
+          this.updateTokensStmt.run(
+            tokens.promptTokens,
+            tokens.completionTokens,
+            tokens.cacheCreationInputTokens ?? null,
+            tokens.cacheReadInputTokens ?? null,
+            id,
+          );
+        }
+      })();
+    } catch (error) {
+      console.error("Failed to flush log writes:", error);
+    }
   }
 
   /**
    * Gets recent logs
    */
   getLogs(limit: number = 100, offset: number = 0): RequestLog[] {
+    this.flush();
     const stmt = this.db.prepare(`
       SELECT * FROM request_logs
       ORDER BY timestamp DESC
@@ -229,6 +280,7 @@ export class Logger {
    * Gets statistics
    */
   getStats(): Stats {
+    this.flush();
     const mainResult = this.db
       .prepare(
         `SELECT
@@ -311,6 +363,7 @@ export class Logger {
    * Gets entity breakdown
    */
   getEntityStats(): Array<{ entity: string; count: number }> {
+    this.flush();
     const logs = this.db
       .prepare(`
       SELECT entities FROM request_logs WHERE entities IS NOT NULL AND entities != ''
@@ -339,6 +392,7 @@ export class Logger {
    * Returns null if there is insufficient historical data (< 10 requests with tokens).
    */
   getTokenAnomaly(): TokenAnomalyResult | null {
+    this.flush();
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -386,6 +440,7 @@ export class Logger {
     provider: string;
     model: string;
   }> {
+    this.flush();
     return this.db
       .prepare(
         `SELECT timestamp, status_code, error_message, provider, model
@@ -407,6 +462,7 @@ export class Logger {
    * Cleans up old logs based on retention policy
    */
   cleanup(): number {
+    this.flush();
     if (this.retentionDays <= 0) {
       return 0; // Keep forever
     }
@@ -427,6 +483,7 @@ export class Logger {
    * Deletes all request logs
    */
   clearAllLogs(): void {
+    this.flush();
     this.db.run("DELETE FROM request_logs");
   }
 
@@ -434,6 +491,7 @@ export class Logger {
    * Closes database connection
    */
   close(): void {
+    this.flush();
     this.db.close();
   }
 }

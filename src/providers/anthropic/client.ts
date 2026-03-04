@@ -3,7 +3,7 @@
  */
 
 import type { AnthropicProviderConfig } from "../../config";
-import { DEFAULT_PROVIDER_TIMEOUT_MS } from "../../constants/timeouts";
+import { createTTFBTimeout, DEFAULT_PROVIDER_TIMEOUT_MS } from "../../constants/timeouts";
 import { ProviderError } from "../errors";
 import type { AnthropicRequest, AnthropicResponse } from "./types";
 
@@ -101,12 +101,20 @@ export async function callAnthropic(
     headers["anthropic-beta"] = clientHeaders.beta;
   }
 
+  // Use a clearable TTFB timeout instead of AbortSignal.timeout().
+  // AbortSignal.timeout() is non-cancelable and would abort the stream mid-flight
+  // for responses longer than the timeout (common with extended thinking).
+  const { signal, clear } = createTTFBTimeout(timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS);
+
   const response = await fetch(`${baseUrl}/v1/messages`, {
     method: "POST",
     headers,
     body: JSON.stringify(request),
-    signal: AbortSignal.timeout(timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS),
+    signal,
   });
+
+  // Response headers received — clear the timer so streaming isn't interrupted
+  clear();
 
   if (!response.ok) {
     throw new ProviderError(response.status, response.statusText, await response.text());

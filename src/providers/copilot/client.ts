@@ -10,7 +10,7 @@
  */
 
 import type { CopilotProviderConfig } from "../../config";
-import { DEFAULT_PROVIDER_TIMEOUT_MS } from "../../constants/timeouts";
+import { createTTFBTimeout, DEFAULT_PROVIDER_TIMEOUT_MS } from "../../constants/timeouts";
 import { ProviderError } from "../errors";
 import type { OpenAIRequest, OpenAIResponse } from "../openai/types";
 import type { CopilotCompletionRequest, CopilotCompletionResponse } from "./types";
@@ -102,12 +102,16 @@ export async function callCopilotChat(
 
   const headers = collectCopilotHeaders(incomingHeaders);
 
+  const { signal, clear } = createTTFBTimeout(DEFAULT_PROVIDER_TIMEOUT_MS);
+
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({ ...request, stream: isStreaming }),
-    signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
+    signal,
   });
+
+  clear();
 
   if (!response.ok) {
     throw new ProviderError(response.status, response.statusText, await response.text());
@@ -140,12 +144,16 @@ export async function callCopilotCompletion(
 
   const headers = collectCopilotHeaders(incomingHeaders);
 
+  const { signal, clear } = createTTFBTimeout(DEFAULT_PROVIDER_TIMEOUT_MS);
+
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({ ...request, stream: isStreaming }),
-    signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
+    signal,
   });
+
+  clear();
 
   if (!response.ok) {
     throw new ProviderError(response.status, response.statusText, await response.text());

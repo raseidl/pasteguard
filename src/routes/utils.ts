@@ -304,6 +304,7 @@ export interface ProviderErrorContext {
   provider: "openai" | "anthropic" | "copilot" | "local";
   model: string;
   startTime: number;
+  providerCallMs?: number;
   pii?: PIILogData;
   secrets?: SecretsLogData;
   maskedContent?: string;
@@ -332,6 +333,7 @@ export function handleProviderError(
         provider: ctx.provider,
         model: ctx.model,
         startTime: ctx.startTime,
+        providerCallMs: ctx.providerCallMs,
         pii: ctx.pii,
         secrets: ctx.secrets,
         maskedContent: ctx.maskedContent,
@@ -356,6 +358,7 @@ export function handleProviderError(
       provider: ctx.provider,
       model: ctx.model,
       startTime: ctx.startTime,
+      providerCallMs: ctx.providerCallMs,
       pii: ctx.pii,
       secrets: ctx.secrets,
       maskedContent: ctx.maskedContent,

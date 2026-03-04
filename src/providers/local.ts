@@ -4,7 +4,11 @@
  */
 
 import type { LocalProviderConfig } from "../config";
-import { DEFAULT_PROVIDER_TIMEOUT_MS, HEALTH_CHECK_TIMEOUT_MS } from "../constants/timeouts";
+import {
+  createTTFBTimeout,
+  DEFAULT_PROVIDER_TIMEOUT_MS,
+  HEALTH_CHECK_TIMEOUT_MS,
+} from "../constants/timeouts";
 import type { AnthropicResult } from "./anthropic/client";
 import type { AnthropicRequest, AnthropicResponse } from "./anthropic/types";
 import { ProviderError, type ProviderResult } from "./openai/client";
@@ -28,12 +32,16 @@ export async function callLocal(
 
   const isStreaming = request.stream ?? false;
 
+  const { signal, clear } = createTTFBTimeout(DEFAULT_PROVIDER_TIMEOUT_MS);
+
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({ ...request, model: config.model, stream: isStreaming }),
-    signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
+    signal,
   });
+
+  clear();
 
   if (!response.ok) {
     throw new ProviderError(response.status, response.statusText, await response.text());
@@ -71,12 +79,16 @@ export async function callLocalAnthropic(
 
   const isStreaming = request.stream ?? false;
 
+  const { signal, clear } = createTTFBTimeout(DEFAULT_PROVIDER_TIMEOUT_MS);
+
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({ ...request, model: config.model, stream: isStreaming }),
-    signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
+    signal,
   });
+
+  clear();
 
   if (!response.ok) {
     throw new ProviderError(response.status, response.statusText, await response.text());

@@ -3,7 +3,7 @@
  */
 
 import type { OpenAIProviderConfig } from "../../config";
-import { DEFAULT_PROVIDER_TIMEOUT_MS } from "../../constants/timeouts";
+import { createTTFBTimeout, DEFAULT_PROVIDER_TIMEOUT_MS } from "../../constants/timeouts";
 import { ProviderError } from "../errors";
 import type { OpenAIRequest, OpenAIResponse } from "./types";
 
@@ -103,12 +103,16 @@ export async function callOpenAI(
     delete body.max_tokens;
   }
 
+  const { signal, clear } = createTTFBTimeout(timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS);
+
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS),
+    signal,
   });
+
+  clear();
 
   if (!response.ok) {
     throw new ProviderError(response.status, response.statusText, await response.text());
