@@ -5,7 +5,7 @@ import { tailwind } from "hono-tailwind";
 import { z } from "zod";
 import { getConfig } from "../config";
 import { getActiveCount, getActivePhases, getOldestActiveMs } from "../services/active-requests";
-import { getProviderStatuses } from "../services/provider-status";
+import { clearProviderStatusCache, getProviderStatuses } from "../services/provider-status";
 import { getPIIDetector } from "../pii/detect";
 import { getLogger } from "../services/logger";
 import DashboardPage from "../views/dashboard/page";
@@ -80,6 +80,16 @@ dashboardRoutes.get("/api/stats", (c) => {
 dashboardRoutes.get("/api/provider-status", async (c) => {
 	const statuses = await getProviderStatuses();
 	return c.json(statuses);
+});
+
+/**
+ * POST /api/reset - Clear all logs and caches
+ */
+dashboardRoutes.post("/api/reset", (c) => {
+	getLogger().clearAllLogs();
+	getPIIDetector().clearCache();
+	clearProviderStatusCache();
+	return c.json({ cleared: ["logs", "pii_cache", "provider_status_cache"] });
 });
 
 /**

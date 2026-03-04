@@ -328,6 +328,17 @@ const Header: FC = () => (
 				<div id="activity-dot" class="w-[7px] h-[7px] bg-success rounded-full animate-pulse-dot" />
 				<span id="activity-label">Live</span>
 			</div>
+			<button
+				id="reset-btn"
+				type="button"
+				class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-text-muted border border-border-subtle bg-elevated hover:text-error hover:border-error/20 hover:bg-error/10 transition-colors cursor-pointer"
+				title="Reset all data"
+			>
+				<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" class="w-[10px] h-[10px] shrink-0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M1.5 3h9M4.5 3V1.5h3V3M9.5 3v7a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V3" />
+				</svg>
+				Reset
+			</button>
 		</div>
 	</header>
 );
@@ -1105,6 +1116,19 @@ async function fetchProviderStatus() {
 fetchStats();
 fetchLogs();
 fetchProviderStatus();
+document.getElementById('reset-btn').addEventListener('click', async function() {
+  if (!confirm('Reset all data? This will clear all logs and caches. This cannot be undone.')) return;
+  try {
+    var res = await fetch('/dashboard/api/reset', { method: 'POST' });
+    if (res.ok) {
+      window.location.reload();
+    }
+  } catch (err) {
+    console.error('Failed to reset:', err);
+  }
+});
+
+
 setInterval(() => { fetchStats(); fetchLogs(); }, 5000);
 setInterval(fetchProviderStatus, 60000);
 

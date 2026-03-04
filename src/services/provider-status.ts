@@ -16,6 +16,10 @@ const FETCH_TIMEOUT_MS = 10_000;
 
 let cached: CachedStatus | null = null;
 
+export function clearProviderStatusCache(): void {
+  cached = null;
+}
+
 export async function getProviderStatuses(): Promise<ProviderStatuses> {
   if (cached && Date.now() - cached.fetchedAt < STATUS_CACHE_TTL_MS) {
     return cached.data;

@@ -424,6 +424,13 @@ export class Logger {
   }
 
   /**
+   * Deletes all request logs
+   */
+  clearAllLogs(): void {
+    this.db.run("DELETE FROM request_logs");
+  }
+
+  /**
    * Closes database connection
    */
   close(): void {

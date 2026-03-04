@@ -94,6 +94,12 @@ class PiiDetectionCache {
       hitRate: total > 0 ? Math.round((this.hits / total) * 1000) / 10 : 0,
     };
   }
+
+  clear(): void {
+    this.cache.clear();
+    this.hits = 0;
+    this.misses = 0;
+  }
 }
 
 export class PIIDetector {
@@ -212,6 +218,10 @@ export class PIIDetector {
     hitRate: number;
   } {
     return this.piiCache.getStats();
+  }
+
+  clearCache(): void {
+    this.piiCache.clear();
   }
 
   async healthCheck(): Promise<boolean> {
